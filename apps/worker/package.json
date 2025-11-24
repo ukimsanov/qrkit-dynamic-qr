@@ -1,0 +1,16 @@
+{
+  "name": "@qrcode-urlshortner/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/worker.ts",
+    "deploy": "wrangler deploy src/worker.ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241112.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.85.0"
+  }
+}
