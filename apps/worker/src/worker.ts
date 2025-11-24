@@ -14,7 +14,7 @@ export default {
     if (url.pathname === "/healthz") {
       return new Response("ok");
     }
-    const code = url.pathname.replace(/^\\//, "");
+    const code = url.pathname.replace(/^\//, "");
     if (!code || code.includes("/")) {
       return new Response("Not found", { status: 404 });
     }
