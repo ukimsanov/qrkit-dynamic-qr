@@ -5,5 +5,8 @@
     "apps/web",
     "apps/api",
     "apps/worker"
-  ]
+  ],
+  "devDependencies": {
+    "esbuild": "^0.27.0"
+  }
 }
