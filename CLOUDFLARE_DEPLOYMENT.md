@@ -73,20 +73,27 @@ Secret Key: eyJhbG...
 ### 1.3 Run Migrations
 
 ```bash
-cd apps/api
-
-# Create .env with Supabase REST API credentials
+# Create .env at repository root
 cat > .env << 'EOF'
+# Database Configuration (Supabase)
 DATABASE_URL=postgresql://postgres.xxx:[PASSWORD]@aws-0-us-east-2.pooler.supabase.com:6543/postgres
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbG...
-PUBLIC_BASE_URL=https://api-worker.your-subdomain.workers.dev
+
+# Redis Configuration (Upstash)
 REDIS_URL=https://xxx.upstash.io
 REDIS_TOKEN=xxx
 REDIS_TTL_SECONDS=86400
+
+# QR Service (Optional)
+QR_SERVICE_URL=https://qr-service.example
+
+# Next.js Web App
+NEXT_PUBLIC_API_URL=https://qr-shortener-api.your-subdomain.workers.dev
 EOF
 
 # Run migrations (uses PostgreSQL connection)
+cd apps/api
 npm run migrate:up
 ```
 
@@ -202,7 +209,7 @@ npm run preview
 npm run deploy
 ```
 
-**Note:** Before deploying, update the `NEXT_PUBLIC_API_URL` in [wrangler.toml](apps/web/wrangler.toml) with your actual API Worker URL.
+**Note:** Before deploying, update the `NEXT_PUBLIC_API_URL` in [.env](.env) at the repository root with your actual API Worker URL.
 
 ---
 
