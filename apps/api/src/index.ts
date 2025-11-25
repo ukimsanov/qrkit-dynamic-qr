@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Redis } from "@upstash/redis";
 import { generateCode } from "./codegen.js";
 
@@ -14,6 +14,18 @@ type Bindings = {
   PUBLIC_BASE_URL: string;
   QR_SERVICE_URL?: string;
 };
+
+// Helper functions to create clients (reusable within a request)
+function getSupabaseClient(env: Bindings): SupabaseClient {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+}
+
+function getRedisClient(env: Bindings): Redis {
+  return new Redis({
+    url: env.REDIS_URL,
+    token: env.REDIS_TOKEN
+  });
+}
 
 type ShortenRequestBody = {
   long_url: string;
@@ -51,7 +63,7 @@ const isValidUrl = (value: string): boolean => {
 };
 
 // Database functions (Supabase REST API)
-async function createUrl(env: Bindings, params: {
+async function createUrl(supabase: SupabaseClient, params: {
   shortCode: string;
   longUrl: string;
   alias?: string;
@@ -60,7 +72,6 @@ async function createUrl(env: Bindings, params: {
   qrUrl?: string | null;
   contentType?: string;
 }): Promise<UrlRow> {
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
   const { shortCode, longUrl, alias, expiresAt, qrStatus, qrUrl, contentType } = params;
 
   const { data, error } = await supabase
@@ -89,9 +100,7 @@ async function createUrl(env: Bindings, params: {
   return data as UrlRow;
 }
 
-async function findUrlByCode(env: Bindings, code: string): Promise<UrlRow | null> {
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
-
+async function findUrlByCode(supabase: SupabaseClient, code: string): Promise<UrlRow | null> {
   const { data, error } = await supabase
     .from('urls')
     .select('*')
@@ -108,9 +117,7 @@ async function findUrlByCode(env: Bindings, code: string): Promise<UrlRow | null
   return data as UrlRow;
 }
 
-async function incrementClick(env: Bindings, code: string): Promise<void> {
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
-
+async function incrementClick(supabase: SupabaseClient, code: string): Promise<void> {
   const { data: existing } = await supabase
     .from('click_totals')
     .select('total_clicks')
@@ -137,19 +144,11 @@ async function incrementClick(env: Bindings, code: string): Promise<void> {
 }
 
 // Cache functions (Redis)
-async function cacheGet(env: Bindings, code: string): Promise<string | null> {
-  const redis = new Redis({
-    url: env.REDIS_URL,
-    token: env.REDIS_TOKEN
-  });
+async function cacheGet(redis: Redis, code: string): Promise<string | null> {
   return await redis.get<string>(`r:${code}`);
 }
 
-async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds?: number): Promise<void> {
-  const redis = new Redis({
-    url: env.REDIS_URL,
-    token: env.REDIS_TOKEN
-  });
+async function cacheSet(redis: Redis, code: string, longUrl: string, ttlSeconds?: number): Promise<void> {
   const ttl = ttlSeconds ?? 86400; // Default 24 hours
   await redis.set(`r:${code}`, longUrl, { ex: ttl });
 }
@@ -207,6 +206,10 @@ app.post("/api/shorten", async (c) => {
     return c.json({ error: "alias must be 7 characters or less" }, 400);
   }
 
+  // Create clients once per request
+  const supabase = getSupabaseClient(c.env);
+  const redis = getRedisClient(c.env);
+
   let lastError: unknown;
   for (let i = 0; i < 3; i++) {
     const code = alias ?? generateCode(7);
@@ -216,7 +219,7 @@ app.post("/api/shorten", async (c) => {
       // Generate QR code for the short URL
       const qrResult = await generateQr(c.env, shortUrl);
 
-      const row = await createUrl(c.env, {
+      const row = await createUrl(supabase, {
         shortCode: code,
         longUrl: body.long_url,
         alias,
@@ -230,7 +233,7 @@ app.post("/api/shorten", async (c) => {
       const cacheTtl = row.expires_at
         ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
         : undefined;
-      void cacheSet(c.env, row.short_code, row.long_url, cacheTtl);
+      void cacheSet(redis, row.short_code, row.long_url, cacheTtl);
 
       return c.json({
         code: row.short_code,
@@ -261,12 +264,16 @@ app.get("/api/resolve/:code", async (c) => {
     return c.json({ error: "not found" }, 404);
   }
 
-  const cached = await cacheGet(c.env, code);
+  // Create clients once per request
+  const supabase = getSupabaseClient(c.env);
+  const redis = getRedisClient(c.env);
+
+  const cached = await cacheGet(redis, code);
   if (cached) {
     return c.json({ long_url: cached });
   }
 
-  const row = await findUrlByCode(c.env, code);
+  const row = await findUrlByCode(supabase, code);
   if (!row) {
     return c.json({ error: "not found" }, 404);
   }
@@ -282,7 +289,7 @@ app.get("/api/resolve/:code", async (c) => {
   const cacheTtl = row.expires_at
     ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
     : undefined;
-  void cacheSet(c.env, code, row.long_url, cacheTtl);
+  void cacheSet(redis, code, row.long_url, cacheTtl);
   return c.json({ long_url: row.long_url });
 });
 
@@ -294,7 +301,10 @@ app.post("/api/analytics/hit", async (c) => {
     return c.json({ error: "code is required" }, 400);
   }
 
-  await incrementClick(c.env, body.code);
+  // Create client once per request
+  const supabase = getSupabaseClient(c.env);
+
+  await incrementClick(supabase, body.code);
   return c.json({ ok: true });
 });
 
@@ -311,14 +321,18 @@ app.get("/:code", async (c) => {
     return c.json({ error: "not found" }, 404);
   }
 
+  // Create clients once per request
+  const supabase = getSupabaseClient(c.env);
+  const redis = getRedisClient(c.env);
+
   // Check cache first
-  const cached = await cacheGet(c.env, code);
+  const cached = await cacheGet(redis, code);
   if (cached) {
     return c.redirect(cached, 301);
   }
 
   // Look up in database
-  const row = await findUrlByCode(c.env, code);
+  const row = await findUrlByCode(supabase, code);
   if (!row) {
     return c.json({ error: "not found" }, 404);
   }
@@ -337,8 +351,8 @@ app.get("/:code", async (c) => {
     : undefined;
 
   // Cache and redirect
-  void cacheSet(c.env, code, row.long_url, cacheTtl);
-  void incrementClick(c.env, code);
+  void cacheSet(redis, code, row.long_url, cacheTtl);
+  void incrementClick(supabase, code);
   return c.redirect(row.long_url, 301);
 });
 
