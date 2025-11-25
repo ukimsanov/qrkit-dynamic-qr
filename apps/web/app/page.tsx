@@ -82,7 +82,7 @@ export default function Home() {
                 value={alias}
                 onChange={(e) => setAlias(e.target.value)}
                 maxLength={7}
-                pattern="[a-zA-Z0-9\-_]+"
+                pattern="^[a-zA-Z0-9\-_]+$"
                 title="Only letters, numbers, hyphens, and underscores are allowed"
                 placeholder="mylink"
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none ring-1 ring-transparent focus:border-emerald-500 focus:ring-emerald-500/20 transition"
