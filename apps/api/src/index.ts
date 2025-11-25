@@ -154,9 +154,10 @@ async function cacheGet(env: Bindings, code: string): Promise<string | null> {
   // Check if URL has expired
   if (cached.expiresAt) {
     const expires = new Date(cached.expiresAt);
-    if (expires.getTime() < Date.now()) {
+    if (expires.getTime() <= Date.now()) {
       // URL has expired, delete from cache and return null
-      await redis.del(`r:${code}`);
+      // Best-effort deletion - don't fail if Redis is unavailable
+      void redis.del(`r:${code}`).catch(() => {});
       return null;
     }
   }
