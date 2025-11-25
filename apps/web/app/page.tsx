@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type ShortenResponse = {
   code: string;
@@ -18,9 +18,24 @@ export default function Home() {
   const [result, setResult] = useState<ShortenResponse | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const [copyMessage, setCopyMessage] = useState("");
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyUrl = async () => {
     if (!result) return;
+    
+    // Clear any existing timeout
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
     
     try {
       await navigator.clipboard.writeText(result.short_url);
@@ -28,7 +43,7 @@ export default function Home() {
       setCopyMessage("URL copied to clipboard");
       
       // Reset to idle after 2 seconds
-      setTimeout(() => {
+      copyTimeoutRef.current = setTimeout(() => {
         setCopyStatus("idle");
         setCopyMessage("");
       }, 2000);
@@ -37,10 +52,22 @@ export default function Home() {
       setCopyMessage("Failed to copy URL");
       
       // Reset to idle after 3 seconds
-      setTimeout(() => {
+      copyTimeoutRef.current = setTimeout(() => {
         setCopyStatus("idle");
         setCopyMessage("");
       }, 3000);
+    }
+  };
+
+  const getCopyButtonClass = () => {
+    const baseClass = "rounded-lg px-4 py-3 text-sm font-medium transition min-w-[80px]";
+    switch (copyStatus) {
+      case "copied":
+        return `${baseClass} bg-emerald-600 text-white`;
+      case "error":
+        return `${baseClass} bg-red-600 text-white`;
+      default:
+        return `${baseClass} bg-slate-800 text-slate-200 hover:bg-slate-700`;
     }
   };
 
@@ -161,13 +188,7 @@ export default function Home() {
                 </a>
                 <button
                   onClick={handleCopyUrl}
-                  className={`rounded-lg px-4 py-3 text-sm font-medium transition min-w-[80px] ${
-                    copyStatus === "copied"
-                      ? "bg-emerald-600 text-white"
-                      : copyStatus === "error"
-                      ? "bg-red-600 text-white"
-                      : "bg-slate-800 text-slate-200 hover:bg-slate-700"
-                  }`}
+                  className={getCopyButtonClass()}
                   aria-label={
                     copyStatus === "copied"
                       ? "Copied to clipboard"
