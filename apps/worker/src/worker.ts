@@ -1,6 +1,6 @@
 interface Env {
-  UPSTASH_REDIS_REST_URL: string;
-  UPSTASH_REDIS_REST_TOKEN: string;
+  REDIS_URL: string;
+  REDIS_TOKEN: string;
   API_BASE_URL: string; // e.g., https://api.yourdomain.com
 }
 
@@ -13,6 +13,13 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") {
       return new Response("ok");
+    }
+    if (url.pathname === "/debug") {
+      return new Response(JSON.stringify({
+        API_BASE_URL: env.API_BASE_URL,
+        has_redis_url: !!env.REDIS_URL,
+        has_redis_token: !!env.REDIS_TOKEN
+      }));
     }
     const code = url.pathname.replace(/^\//, "");
     if (!code || code.includes("/")) {
@@ -40,12 +47,26 @@ function redirect(target: string): Response {
 }
 
 async function resolveViaApi(env: Env, code: string): Promise<ResolveResponse | null> {
-  const res = await fetch(`${env.API_BASE_URL}/api/resolve/${code}`, {
+  const url = `${env.API_BASE_URL}/api/resolve/${code}`;
+  console.log(`Resolving ${code} via ${url}`);
+  const res = await fetch(url, {
     method: "GET",
     headers: { accept: "application/json" }
   });
-  if (!res.ok) return null;
-  return (await res.json()) as ResolveResponse;
+  const responseText = await res.text();
+  console.log(`API response status: ${res.status}, body: ${responseText}`);
+  if (!res.ok) {
+    console.log(`API resolve failed for ${code}`);
+    return null;
+  }
+  try {
+    const data = JSON.parse(responseText) as ResolveResponse;
+    console.log(`Resolved ${code} to ${data.long_url}`);
+    return data;
+  } catch (e) {
+    console.log(`Failed to parse response: ${e}`);
+    return null;
+  }
 }
 
 async function sendHit(env: Env, code: string): Promise<void> {
@@ -61,8 +82,8 @@ async function sendHit(env: Env, code: string): Promise<void> {
 }
 
 async function redisGet(env: Env, code: string): Promise<string | null> {
-  const res = await fetch(`${env.UPSTASH_REDIS_REST_URL}/get/${encodeURIComponent(code)}`, {
-    headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}` }
+  const res = await fetch(`${env.REDIS_URL}/get/${encodeURIComponent(code)}`, {
+    headers: { Authorization: `Bearer ${env.REDIS_TOKEN}` }
   });
   if (!res.ok) return null;
   const data = (await res.json()) as { result?: string | null };
@@ -70,9 +91,9 @@ async function redisGet(env: Env, code: string): Promise<string | null> {
 }
 
 async function redisSet(env: Env, code: string, value: string, ttlSeconds: number): Promise<void> {
-  await fetch(`${env.UPSTASH_REDIS_REST_URL}/set/${encodeURIComponent(code)}/${encodeURIComponent(value)}`, {
+  await fetch(`${env.REDIS_URL}/set/${encodeURIComponent(code)}/${encodeURIComponent(value)}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}` },
+    headers: { Authorization: `Bearer ${env.REDIS_TOKEN}` },
     body: JSON.stringify({ ex: ttlSeconds })
   });
 }

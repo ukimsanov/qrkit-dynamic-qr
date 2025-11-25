@@ -309,8 +309,10 @@ app.post("/api/shorten", async (c) => {
 // Resolve URL endpoint
 app.get("/api/resolve/:code", async (c) => {
   const code = c.req.param("code");
+  console.log(`[RESOLVE] Received request for code: ${code}`);
 
   if (!code) {
+    console.log(`[RESOLVE] No code provided`);
     return c.json({ error: "not found" }, 404);
   }
 
@@ -350,6 +352,45 @@ app.post("/api/analytics/hit", async (c) => {
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok" });
+});
+
+// Catch-all route for short code redirects (must be last!)
+app.get("/:code", async (c) => {
+  const code = c.req.param("code");
+  console.log(`[REDIRECT] Handling redirect for code: ${code}`);
+
+  if (!code || code.includes("/")) {
+    return c.json({ error: "not found" }, 404);
+  }
+
+  // Check cache first
+  const cached = await cacheGet(c.env, code);
+  if (cached) {
+    console.log(`[REDIRECT] Cache hit for ${code}, redirecting to ${cached}`);
+    return c.redirect(cached, 301);
+  }
+
+  // Look up in database
+  const row = await findUrlByCode(c.env, code);
+  if (!row) {
+    console.log(`[REDIRECT] Code ${code} not found in database`);
+    return c.json({ error: "not found" }, 404);
+  }
+
+  // Check if expired
+  if (row.expires_at) {
+    const expires = new Date(row.expires_at);
+    if (expires.getTime() < Date.now()) {
+      console.log(`[REDIRECT] Code ${code} has expired`);
+      return c.json({ error: "expired" }, 410);
+    }
+  }
+
+  // Cache and redirect
+  void cacheSet(c.env, code, row.long_url);
+  void incrementClick(c.env, code);
+  console.log(`[REDIRECT] Redirecting ${code} to ${row.long_url}`);
+  return c.redirect(row.long_url, 301);
 });
 
 export default app;
