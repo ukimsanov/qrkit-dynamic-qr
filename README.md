@@ -1,54 +1,46 @@
 # QR Code + URL Shortener
 
-High-performance URL shortening service with QR code generation, built on edge computing and modern TypeScript.
+High-performance URL shortening service with QR code generation, deployed on Cloudflare Workers edge network.
 
 ## Architecture
 
 ```
-┌─────────────┐
-│  Next.js 16 │  User creates short URL + QR code
-│  (Port 3000)│
-└──────┬──────┘
-       │ /api/* → proxy
-       ↓
-┌─────────────┐
-│  Fastify 5  │  URL shortening + QR orchestration
-│  (Port 3001)│
-└──────┬──────┘
-       │
-       ├─→ PostgreSQL (persistent storage)
-       ├─→ Upstash Redis (24hr cache, edge-compatible)
-       └─→ QR Service (external Java microservice)
-
-┌──────────────────┐
-│ Cloudflare Worker│  User clicks short URL
-│   (Global Edge)  │
-└──────┬───────────┘
-       │
-       ├─→ Redis (cache hit → instant redirect)
-       └─→ API (cache miss → resolve → cache → redirect)
+┌─────────────────┐
+│  Next.js 16.0.4 │  User creates short URL + QR code
+│ (Cloudflare)    │
+└────────┬────────┘
+         │
+         ↓
+┌─────────────────┐
+│   Hono API      │  URL shortening + QR orchestration + Redirects
+│ (Cloudflare)    │  • POST /api/shorten - Create short URLs
+└────────┬────────┘  • GET /:code - Redirect to long URL
+         │
+         ├─→ Supabase (PostgreSQL) - Persistent storage
+         ├─→ Upstash Redis - 24hr cache for fast redirects
+         └─→ QR Service - External microservice (optional)
 ```
+
+**Key Feature**: Single API worker handles both creation and redirects using catch-all route.
 
 ## Tech Stack
 
-- **Next.js 16.0.4** - React 19, App Router, Turbopack
-- **Fastify 5.0.0** - High-performance API server
-- **PostgreSQL** - Persistent storage (Supabase/Neon compatible)
-- **Upstash Redis** - Serverless cache with REST API
-- **Cloudflare Workers** - Global edge redirector
+- **Next.js 16.0.4** - React 19, App Router, deployed on Cloudflare Workers
+- **Hono** - Ultra-fast web framework optimized for edge
+- **Supabase (PostgreSQL)** - Persistent storage with REST API
+- **Upstash Redis** - Serverless cache with global replication
+- **Cloudflare Workers** - Global edge deployment (300+ locations)
 - **TypeScript 5.6** - End-to-end type safety
 
 ## Repository Structure
 
 ```
 apps/
-├── api/          Fastify API service
+├── api/          Hono API service (deployed to Workers)
 │   ├── src/
 │   └── migrations/
-├── web/          Next.js frontend
-│   └── app/
-└── worker/       Cloudflare Worker redirector
-    └── src/
+└── web/          Next.js frontend (deployed to Workers)
+    └── app/
 ```
 
 ## Quick Start
@@ -57,23 +49,26 @@ apps/
 # Install dependencies
 npm install
 
-# Configure API
-cd apps/api
+# Configure environment
 cp .env.example .env
-# Edit .env with your DATABASE_URL, REDIS_URL, REDIS_TOKEN
+# Edit .env with your Supabase, Redis credentials
 
-# Run migrations
+# Run database migrations
+cd apps/api
 npm run migrate:up
 
-# Start API
-npm run dev
+# Deploy to Cloudflare Workers
+# API
+cd apps/api
+wrangler deploy
 
-# In another terminal, start web
+# Web (after setting NEXT_PUBLIC_API_URL in .env)
 cd apps/web
-npm run dev
+npm run build:worker
+npm run deploy
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+See [CLOUDFLARE_DEPLOYMENT.md](CLOUDFLARE_DEPLOYMENT.md) for detailed setup instructions.
 
 ## API Endpoints
 
@@ -91,21 +86,38 @@ See [DATABASE.md](DATABASE.md) for schema documentation.
 
 ## Environment Variables
 
-### API (.env)
+All environment variables are stored in [.env](.env) at the repository root. Use [.env.example](.env.example) as a template.
+
+### Required Variables
 ```env
-DATABASE_URL=postgresql://user:pass@host:5432/db
-PUBLIC_BASE_URL=http://localhost:3001
+# Database (Supabase)
+DATABASE_URL=postgresql://postgres.xxx:pass@aws-0-us-east-2.pooler.supabase.com:6543/postgres
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbG...
+
+# Cache (Upstash Redis)
 REDIS_URL=https://xxx.upstash.io
 REDIS_TOKEN=xxx
-QR_SERVICE_URL=http://qr-service:8080  # Optional
 REDIS_TTL_SECONDS=86400
+
+# Next.js Web App
+NEXT_PUBLIC_API_URL=https://qr-shortener-api.your-account.workers.dev
 ```
 
-### Worker (wrangler secrets)
+### Optional Variables
+```env
+# QR Service (your teammate's implementation)
+QR_SERVICE_URL=https://qr-service.example
+```
+
+### Cloudflare Secrets
+Some sensitive values must be set as Cloudflare secrets:
 ```bash
-wrangler secret put UPSTASH_REDIS_REST_URL
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
-wrangler secret put API_BASE_URL
+cd apps/api
+wrangler secret put SUPABASE_URL
+wrangler secret put SUPABASE_SERVICE_KEY
+wrangler secret put REDIS_URL
+wrangler secret put REDIS_TOKEN
 ```
 
 ## License

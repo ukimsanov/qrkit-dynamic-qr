@@ -12,12 +12,10 @@ Design a globally distributed URL shortening service with QR code generation tha
 
 ### Functional
 - Generate short URLs from long URLs (7-character base62 codes)
-- Support custom aliases
+- Support custom aliases (max 7 characters)
 - Generate QR codes for each short URL
 - Track click analytics
 - Support URL expiration
-- Support multiple QR content types (URL, vCard, WiFi, Email, SMS)
-- Allow QR customization (colors, error correction levels)
 
 ### Non-Functional
 - **Latency**: p99 < 100ms for redirects
@@ -28,58 +26,41 @@ Design a globally distributed URL shortening service with QR code generation tha
 ## High-Level Architecture
 
 ```
-┌──────────┐     ┌──────────────┐     ┌────────────┐
-│  Client  │────▶│ Edge Worker  │────▶│ Origin API │
-└──────────┘     │ (Cloudflare) │     │  (Fastify) │
-                 └───────┬──────┘     └─────┬──────┘
-                         │                   │
-                    ┌────▼────┐         ┌────▼────┐
-                    │  Redis  │         │ Postgres│
-                    │ (Cache) │         │  (DB)   │
-                    └─────────┘         └─────────┘
-                                             │
-                                        ┌────▼────┐
-                                        │   QR    │
-                                        │ Service │
-                                        └─────────┘
+┌──────────┐     ┌─────────────────┐
+│  Client  │────▶│   Hono API      │  • POST /api/shorten
+└──────────┘     │ (Cloudflare)    │  • GET /:code (redirect)
+                 └────────┬────────┘
+                          │
+         ┌────────────────┼────────────────┐
+         │                │                │
+    ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
+    │  Redis  │     │ Postgres│     │   QR    │
+    │ (Cache) │     │  (DB)   │     │ Service │
+    └─────────┘     └─────────┘     └─────────┘
 ```
+
+**Key Insight**: Single API worker handles both URL creation and redirects using catch-all route.
 
 ## Core Components
 
-### 1. Edge Layer (Cloudflare Worker)
-**Purpose**: Global request routing and caching
+### 1. API Layer (Hono on Cloudflare Workers)
+**Purpose**: URL creation, resolution, QR orchestration, and redirects
+
+**Why Hono?**
+- Ultra-lightweight (~12KB)
+- Optimized for edge/Workers (faster than Express/Fastify)
+- Native TypeScript support
+- Middleware ecosystem (CORS, secure-headers)
 
 **Why Cloudflare Workers?**
-- 300+ data centers globally (p99 latency: 50-80ms)
+- 300+ data centers globally (p99 latency: 15-50ms)
 - Native Upstash Redis integration
 - Pay-per-request pricing (~$0.50 per million requests)
 - No cold starts
 
-**Flow**:
-```
-1. User clicks short URL
-2. Worker checks Redis cache (r:<code>)
-3. Cache hit? → 301 redirect (cached 24hrs)
-4. Cache miss? → Call origin API → Cache result → Redirect
-5. Fire-and-forget analytics hit to API
-```
-
-**Trade-offs**:
-- ✅ Ultra-low latency for cached URLs
-- ✅ Offloads 95%+ traffic from origin
-- ❌ Eventual consistency for analytics (acceptable)
-- ❌ Limited compute (can't run Java)
-
----
-
-### 2. API Layer (Fastify)
-**Purpose**: URL creation, resolution, QR orchestration
-
-**Why Fastify?**
-- 5-10% faster than Express (76k req/s vs 61k req/s)
-- Native TypeScript support
-- Plugin ecosystem (CORS, Helmet, Sensible)
-- Low overhead (~13MB memory per instance)
+**Architectural Simplification**:
+- Single worker handles both creation (`POST /api/shorten`) and redirects (`GET /:code`)
+- Eliminated separate redirector worker (simpler deployment, lower latency)
 
 **Key Endpoints**:
 - `POST /api/shorten` - Create URL + generate QR
@@ -108,7 +89,7 @@ for (let i = 0; i < 3; i++) {
 
 ---
 
-### 3. Database (PostgreSQL)
+### 2. Database (Supabase PostgreSQL)
 **Purpose**: Persistent storage for URLs and analytics
 
 **Schema Design**:
@@ -130,7 +111,7 @@ click_totals: (short_code PK, total_clicks, updated_at) ON DELETE CASCADE
 
 ---
 
-### 4. Cache Layer (Upstash Redis)
+### 3. Cache Layer (Upstash Redis)
 **Purpose**: High-speed cache for frequent redirects
 
 **Why Upstash?**
@@ -156,29 +137,28 @@ Write: Update DB → Invalidate/warm cache
 
 ---
 
-### 5. QR Service (External Java Microservice)
-**Purpose**: Generate QR codes with customization
+### 4. QR Service (External Microservice)
+**Purpose**: Generate QR codes for short URLs
 
 **Why separate service?**
-- Teammate owns implementation (ZXing/Aspose.BarCode)
-- Language isolation (Java for QR libraries)
+- Teammate owns implementation
+- Language isolation (allows use of specialized QR libraries)
 - Failure isolation (best-effort QR generation)
 
-**API Contract**:
+**Simplified API Contract**:
 ```json
 POST /qr
 {
-  "contentType": "url" | "vcard" | "wifi" | "email" | "sms",
-  "data": { ... },
-  "customization": {
-    "colors": { "foreground": "#000", "background": "#fff" },
-    "errorCorrection": "L" | "M" | "Q" | "H",
-    "size": 300
-  }
+  "content": "https://short.link/abc123x"
 }
 
-Response: { "status": "ready", "url": "https://cdn.../qr.png" }
+Response: { "qr_url": "https://cdn.../qr.png" }
 ```
+
+**Simplifications**:
+- Only generates QR for the short URL itself (not custom content)
+- No customization options (removed colors, error correction, size)
+- ~33 byte payload for 7-character short codes
 
 **Failure Handling**:
 - QR generation is **best-effort** (non-blocking)
@@ -229,11 +209,11 @@ Response: { "status": "ready", "url": "https://cdn.../qr.png" }
 - ✅ 7 chars = 3.5 trillion combinations (no exhaustion risk)
 - ❌ Sequential: Leaks business metrics, requires distributed counter
 
-### 2. Why Cloudflare Workers instead of Nginx?
-- ✅ Global distribution (300+ locations)
-- ✅ No server management
-- ✅ Pay-per-request (cost-efficient at low scale)
-- ❌ Nginx: Single region, requires infra management
+### 2. Why single API worker instead of separate redirector?
+- ✅ Simpler deployment (one service instead of two)
+- ✅ Lower latency (no inter-worker communication)
+- ✅ Easier to maintain (single codebase)
+- ❌ Separate worker: Added complexity, potential communication failures
 
 ### 3. Why cache-aside instead of write-through?
 - ✅ Simpler implementation
@@ -349,9 +329,9 @@ Response: { "status": "ready", "url": "https://cdn.../qr.png" }
 
 ## Tech Stack Rationale
 
-- **Next.js 16**: Modern React, App Router, built-in optimizations
-- **Fastify 5**: Performance (76k req/s), TypeScript-first
-- **PostgreSQL**: ACID, strong consistency, JSON support
-- **Upstash Redis**: Serverless, global, REST API
-- **Cloudflare Workers**: Global edge, no cold starts
+- **Next.js 16**: Modern React, App Router, deployed on Cloudflare Workers
+- **Hono**: Ultra-fast edge framework, optimized for Workers (~12KB)
+- **Supabase (PostgreSQL)**: ACID, strong consistency, REST API
+- **Upstash Redis**: Serverless, global replication, REST API
+- **Cloudflare Workers**: Global edge (300+ locations), no cold starts
 - **TypeScript**: End-to-end type safety, fewer runtime errors
