@@ -20,11 +20,19 @@ function getSupabaseClient(env: Bindings): SupabaseClient {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 }
 
+// Memoized Redis client per environment
+const redisClientMap = new WeakMap<Bindings, Redis>();
+
 function getRedisClient(env: Bindings): Redis {
-  return new Redis({
-    url: env.REDIS_URL,
-    token: env.REDIS_TOKEN
-  });
+  let client = redisClientMap.get(env);
+  if (!client) {
+    client = new Redis({
+      url: env.REDIS_URL,
+      token: env.REDIS_TOKEN
+    });
+    redisClientMap.set(env, client);
+  }
+  return client;
 }
 
 type ShortenRequestBody = {
@@ -129,40 +137,6 @@ async function incrementClick(supabase: SupabaseClient, code: string): Promise<v
 }
 
 // Cache functions (Redis)
-type CachedUrl = {
-  url: string;
-  expiresAt: string | null;
-};
-
-async function cacheGet(env: Bindings, code: string): Promise<string | null> {
-  const redis = new Redis({
-    url: env.REDIS_URL,
-    token: env.REDIS_TOKEN
-  });
-  const cached = await redis.get<CachedUrl>(`r:${code}`);
-  if (!cached) {
-    return null;
-  }
-  // Check if URL has expired
-  if (cached.expiresAt) {
-    const expires = new Date(cached.expiresAt);
-    if (expires.getTime() <= Date.now()) {
-// Memoized Redis client per environment
-const redisClientMap = new WeakMap<Bindings, Redis>();
-
-function getRedisClient(env: Bindings): Redis {
-  let client = redisClientMap.get(env);
-  if (!client) {
-    client = new Redis({
-      url: env.REDIS_URL,
-      token: env.REDIS_TOKEN
-    });
-    redisClientMap.set(env, client);
-  }
-  return client;
-}
-
-// Cache functions (Redis)
 async function cacheGet(env: Bindings, code: string): Promise<string | null> {
   const redis = getRedisClient(env);
   return await redis.get<string>(`r:${code}`);
@@ -171,8 +145,7 @@ async function cacheGet(env: Bindings, code: string): Promise<string | null> {
 async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds?: number): Promise<void> {
   const redis = getRedisClient(env);
   const ttl = ttlSeconds ?? 86400; // Default 24 hours
-  const value: CachedUrl = { url: longUrl, expiresAt };
-  await redis.set(`r:${code}`, value, { ex: ttl });
+  await redis.set(`r:${code}`, longUrl, { ex: ttl });
 }
 
 // QR generation function (simplified - just generates QR for the short URL)
@@ -259,7 +232,7 @@ app.post("/api/shorten", async (c) => {
       const cacheTtl = row.expires_at
         ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
         : undefined;
-      void cacheSet(c.env, row.short_code, row.long_url, row.expires_at, cacheTtl);
+      void cacheSet(c.env, row.short_code, row.long_url, cacheTtl);
 
       return c.json({
         code: row.short_code,
@@ -292,9 +265,8 @@ app.get("/api/resolve/:code", async (c) => {
 
   // Create clients once per request
   const supabase = getSupabaseClient(c.env);
-  const redis = getRedisClient(c.env);
 
-  const cached = await cacheGet(redis, code);
+  const cached = await cacheGet(c.env, code);
   if (cached) {
     return c.json({ long_url: cached });
   }
@@ -315,7 +287,7 @@ app.get("/api/resolve/:code", async (c) => {
   const cacheTtl = row.expires_at
     ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
     : undefined;
-  void cacheSet(c.env, code, row.long_url, row.expires_at, cacheTtl);
+  void cacheSet(c.env, code, row.long_url, cacheTtl);
   return c.json({ long_url: row.long_url });
 });
 
@@ -349,10 +321,9 @@ app.get("/:code", async (c) => {
 
   // Create clients once per request
   const supabase = getSupabaseClient(c.env);
-  const redis = getRedisClient(c.env);
 
   // Check cache first
-  const cached = await cacheGet(redis, code);
+  const cached = await cacheGet(c.env, code);
   if (cached) {
     return c.redirect(cached, 301);
   }
@@ -377,8 +348,8 @@ app.get("/:code", async (c) => {
     : undefined;
 
   // Cache and redirect
-  void cacheSet(c.env, code, row.long_url, row.expires_at, cacheTtl);
-  void incrementClick(c.env, code);
+  void cacheSet(c.env, code, row.long_url, cacheTtl);
+  void incrementClick(supabase, code);
   return c.redirect(row.long_url, 301);
 });
 
