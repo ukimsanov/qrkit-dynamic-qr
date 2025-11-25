@@ -21,17 +21,17 @@ Complete guide to deploy your entire stack on Cloudflare using modern tools.
 └──────────────────────────────────────────────┘
          │                    │
     [Workers]            [Pages/Workers]
-    Redirector           Next.js Web
+    API (Hono)           Next.js Web
          │                    │
          ├────────────────────┤
          │                    │
-    [Workers]            [Supabase]
-    API (Fastify)        REST API
-         │
-    [Upstash Redis]
+    [Upstash Redis]      [Supabase]
+                         REST API
 ```
 
 **Key insight:** Supabase REST API + Workers = No connection pooling needed!
+
+**Note:** The API worker handles both URL creation (`POST /api/shorten`) and redirects (`GET /:code`) in a single service.
 
 ---
 
@@ -213,28 +213,7 @@ npm run deploy
 
 ---
 
-## Step 5: Deploy Redirector Worker
-
-```bash
-cd apps/worker
-
-# Set secrets
-wrangler secret put UPSTASH_REDIS_REST_URL
-# Paste: https://xxx.upstash.io
-
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
-# Paste: your_upstash_token
-
-wrangler secret put API_BASE_URL
-# Paste: https://qr-api.your-subdomain.workers.dev
-
-# Deploy
-npm run deploy
-```
-
----
-
-## Step 6: Deployment Verification Checklist
+## Step 5: Deployment Verification Checklist
 
 ### Pre-Deployment
 - [ ] Supabase project created and migrations run
@@ -252,10 +231,6 @@ wrangler deploy
 # 2. Deploy Web Worker
 cd ../web
 npm run build
-npm run deploy
-
-# 3. Deploy Redirector Worker
-cd ../worker
 npm run deploy
 ```
 
@@ -276,8 +251,8 @@ curl -X POST https://qr-shortener-api.your-subdomain.workers.dev/api/shorten \
 2. Enter a URL and generate QR code
 3. Verify QR code displays and short URL is created
 
-**Test Redirector:**
-Visit `https://your-redirector.workers.dev/abc123` → Should redirect to Google
+**Test Redirects (via API Worker):**
+Visit `https://qr-shortener-api.your-subdomain.workers.dev/abc123` → Should redirect to Google
 
 **Test Content Types:**
 ```bash
@@ -298,7 +273,6 @@ curl -X POST https://qr-shortener-api.your-subdomain.workers.dev/api/shorten \
 - [ ] API responds to `/:code` requests (redirects short code to long URL)
 - [ ] Web UI loads and renders correctly
 - [ ] QR codes are generated (check `qr_url` in response)
-- [ ] Redirector redirects short codes to long URLs
 - [ ] Redis caching works (check logs for cache hits)
 - [ ] All content types work (url, vcard, wifi, email, sms)
 - [ ] QR customization works (colors, error correction)
@@ -330,13 +304,6 @@ wrangler secret put REDIS_TOKEN
 ### Web (Pages or Worker)
 ```env
 NEXT_PUBLIC_API_URL=https://qr-api.your-subdomain.workers.dev
-```
-
-### Redirector Worker
-```bash
-wrangler secret put UPSTASH_REDIS_REST_URL
-wrangler secret put UPSTASH_REDIS_REST_TOKEN
-wrangler secret put API_BASE_URL
 ```
 
 ---
@@ -463,8 +430,7 @@ cd apps/api
 wrangler deploy
 ```
 
-### Phase 4: Keep Redirector on Workers
-Already done! ✅
+The API worker handles both URL creation and redirects - no separate redirector worker needed!
 
 ---
 
@@ -483,7 +449,7 @@ Already done! ✅
 1. Set up Supabase project and run migrations
 2. Create Upstash Redis database
 3. Configure secrets using `wrangler secret put`
-4. Deploy using the commands in Step 6
+4. Deploy using the commands in Step 5
 5. 🎉 Enjoy sub-50ms global latency!
 
 ### 📂 Key Files Updated
