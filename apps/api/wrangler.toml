@@ -1,0 +1,25 @@
+name = "qr-shortener-api"
+main = "src/index.ts"
+compatibility_date = "2025-11-24"
+compatibility_flags = ["nodejs_compat"]
+
+# Specify which Cloudflare account to use (required when you have multiple accounts)
+account_id = "568051052fcb248c756d306dece6cfb7"
+
+[vars]
+PUBLIC_BASE_URL = "https://qr-shortener-api.ularkimsanov7.workers.dev"
+
+# Observability - Enable full logging
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+# Secrets (set via wrangler secret put):
+# SUPABASE_URL=https://xxx.supabase.co
+# SUPABASE_SERVICE_KEY=eyJhbG...
+# REDIS_URL=https://xxx.upstash.io
+# REDIS_TOKEN=xxx
+# QR_SERVICE_URL=https://your-qr-service.com (optional)

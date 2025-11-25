@@ -1,0 +1,11 @@
+{
+  "name": "qrcode-urlshortner",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/api"
+  ],
+  "devDependencies": {
+    "esbuild": "^0.27.0"
+  }
+}

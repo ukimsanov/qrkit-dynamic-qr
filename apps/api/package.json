@@ -1,0 +1,35 @@
+{
+  "name": "@qrcode-urlshortner/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . --ext .ts",
+    "migrate": "node -r dotenv/config $(which node-pg-migrate)",
+    "migrate:up": "node -r dotenv/config $(which node-pg-migrate) up",
+    "migrate:down": "node -r dotenv/config $(which node-pg-migrate) down",
+    "migrate:create": "node -r dotenv/config $(which node-pg-migrate) create"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.84.0",
+    "@upstash/redis": "^1.32.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.10.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "esbuild": "^0.25.12",
+    "eslint": "8.57.0",
+    "eslint-config-standard-with-typescript": "^43.0.0",
+    "eslint-plugin-import": "2.29.1",
+    "eslint-plugin-n": "16.6.2",
+    "eslint-plugin-promise": "6.6.0",
+    "node-pg-migrate": "^8.0.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.50.0"
+  }
+}

@@ -1,0 +1,14 @@
+name = "qr-shortener-web"
+main = ".open-next/worker.js"
+compatibility_date = "2025-11-24"
+compatibility_flags = ["nodejs_compat"]
+
+# Specify which Cloudflare account to use (required when you have multiple accounts)
+account_id = "568051052fcb248c756d306dece6cfb7"  # ularkimsanov7@gmail.com
+
+[vars]
+NEXT_PUBLIC_API_URL = "https://qr-shortener-api.ularkimsanov7.workers.dev"
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
