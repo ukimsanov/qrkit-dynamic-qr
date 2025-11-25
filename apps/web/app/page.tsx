@@ -16,12 +16,41 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ShortenResponse | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const [copyMessage, setCopyMessage] = useState("");
+
+  const handleCopyUrl = async () => {
+    if (!result) return;
+    
+    try {
+      await navigator.clipboard.writeText(result.short_url);
+      setCopyStatus("copied");
+      setCopyMessage("URL copied to clipboard");
+      
+      // Reset to idle after 2 seconds
+      setTimeout(() => {
+        setCopyStatus("idle");
+        setCopyMessage("");
+      }, 2000);
+    } catch {
+      setCopyStatus("error");
+      setCopyMessage("Failed to copy URL");
+      
+      // Reset to idle after 3 seconds
+      setTimeout(() => {
+        setCopyStatus("idle");
+        setCopyMessage("");
+      }, 3000);
+    }
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+    setCopyStatus("idle");
+    setCopyMessage("");
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -115,6 +144,10 @@ export default function Home() {
 
         {result && (
           <div className="mt-6 space-y-4 rounded-lg border border-emerald-800/40 bg-emerald-950/30 p-6">
+            {/* Accessible status announcement region */}
+            <div className="sr-only" aria-live="polite" aria-atomic="true">
+              {copyMessage}
+            </div>
             <div className="space-y-2">
               <span className="text-sm font-medium text-slate-200">Short URL:</span>
               <div className="flex items-center gap-3">
@@ -127,12 +160,27 @@ export default function Home() {
                   {result.short_url}
                 </a>
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(result.short_url);
-                  }}
-                  className="rounded-lg bg-slate-800 px-4 py-3 text-sm font-medium text-slate-200 hover:bg-slate-700 transition"
+                  onClick={handleCopyUrl}
+                  className={`rounded-lg px-4 py-3 text-sm font-medium transition min-w-[80px] ${
+                    copyStatus === "copied"
+                      ? "bg-emerald-600 text-white"
+                      : copyStatus === "error"
+                      ? "bg-red-600 text-white"
+                      : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                  }`}
+                  aria-label={
+                    copyStatus === "copied"
+                      ? "Copied to clipboard"
+                      : copyStatus === "error"
+                      ? "Copy failed, try again"
+                      : "Copy URL to clipboard"
+                  }
                 >
-                  Copy
+                  {copyStatus === "copied"
+                    ? "Copied!"
+                    : copyStatus === "error"
+                    ? "Failed"
+                    : "Copy"}
                 </button>
               </div>
             </div>
