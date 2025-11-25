@@ -295,6 +295,7 @@ curl -X POST https://qr-shortener-api.your-subdomain.workers.dev/api/shorten \
 ### Verification Checklist
 - [ ] API responds to `/api/shorten` requests
 - [ ] API responds to `/api/resolve/:code` requests
+- [ ] API responds to `/:code` requests (redirects short code to long URL)
 - [ ] Web UI loads and renders correctly
 - [ ] QR codes are generated (check `qr_url` in response)
 - [ ] Redirector redirects short codes to long URLs
