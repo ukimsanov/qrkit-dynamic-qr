@@ -1,0 +1,22 @@
+# Build artifacts
+target/
+*.class
+*.jar
+
+# Generated QR codes
+*.png
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies (downloaded by build.bat)
+lib/
