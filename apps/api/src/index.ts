@@ -145,12 +145,13 @@ async function cacheGet(env: Bindings, code: string): Promise<string | null> {
   return await redis.get<string>(`r:${code}`);
 }
 
-async function cacheSet(env: Bindings, code: string, longUrl: string): Promise<void> {
+async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds?: number): Promise<void> {
   const redis = new Redis({
     url: env.REDIS_URL,
     token: env.REDIS_TOKEN
   });
-  await redis.set(`r:${code}`, longUrl, { ex: 86400 }); // 24 hours
+  const ttl = ttlSeconds ?? 86400; // Default 24 hours
+  await redis.set(`r:${code}`, longUrl, { ex: ttl });
 }
 
 // QR generation function (simplified - just generates QR for the short URL)
@@ -221,7 +222,11 @@ app.post("/api/shorten", async (c) => {
         contentType: "url"
       });
 
-      void cacheSet(c.env, row.short_code, row.long_url);
+      // Calculate TTL: use expiration time if set, otherwise default 24hrs
+      const cacheTtl = row.expires_at
+        ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
+        : undefined;
+      void cacheSet(c.env, row.short_code, row.long_url, cacheTtl);
 
       return c.json({
         code: row.short_code,
@@ -269,7 +274,11 @@ app.get("/api/resolve/:code", async (c) => {
     }
   }
 
-  void cacheSet(c.env, code, row.long_url);
+  // Calculate TTL: use expiration time if set, otherwise default 24hrs
+  const cacheTtl = row.expires_at
+    ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
+    : undefined;
+  void cacheSet(c.env, code, row.long_url, cacheTtl);
   return c.json({ long_url: row.long_url });
 });
 
@@ -318,8 +327,13 @@ app.get("/:code", async (c) => {
     }
   }
 
+  // Calculate TTL: use expiration time if set, otherwise default 24hrs
+  const cacheTtl = row.expires_at
+    ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
+    : undefined;
+
   // Cache and redirect
-  void cacheSet(c.env, code, row.long_url);
+  void cacheSet(c.env, code, row.long_url, cacheTtl);
   void incrementClick(c.env, code);
   return c.redirect(row.long_url, 301);
 });
