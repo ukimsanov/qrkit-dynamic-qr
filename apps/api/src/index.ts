@@ -17,6 +17,11 @@ type Bindings = {
 
 // Helper functions to create clients (reusable within a request)
 function getSupabaseClient(env: Bindings): SupabaseClient {
+  console.log("[SUPABASE] Creating client", {
+    url: env.SUPABASE_URL,
+    hasServiceKey: !!env.SUPABASE_SERVICE_KEY,
+    serviceKeyLength: env.SUPABASE_SERVICE_KEY?.length
+  });
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 }
 
@@ -26,11 +31,18 @@ const redisClientMap = new WeakMap<Bindings, Redis>();
 function getRedisClient(env: Bindings): Redis {
   let client = redisClientMap.get(env);
   if (!client) {
+    console.log("[REDIS] Creating new client", {
+      url: env.REDIS_URL,
+      hasToken: !!env.REDIS_TOKEN,
+      tokenLength: env.REDIS_TOKEN?.length
+    });
     client = new Redis({
       url: env.REDIS_URL,
       token: env.REDIS_TOKEN
     });
     redisClientMap.set(env, client);
+  } else {
+    console.log("[REDIS] Reusing memoized client");
   }
   return client;
 }
@@ -109,6 +121,7 @@ async function createUrl(supabase: SupabaseClient, params: {
 }
 
 async function findUrlByCode(supabase: SupabaseClient, code: string): Promise<UrlRow | null> {
+  console.log(`[DB] Finding URL by code: ${code}`);
   const { data, error } = await supabase
     .from('urls')
     .select('*')
@@ -117,35 +130,46 @@ async function findUrlByCode(supabase: SupabaseClient, code: string): Promise<Ur
 
   if (error) {
     if (error.code === 'PGRST116') {
+      console.log(`[DB] URL not found: ${code}`);
       return null;
     }
+    console.error(`[DB] Error finding URL:`, error);
     throw new Error(`Database error: ${error.message}`);
   }
 
+  console.log(`[DB] Found URL:`, { code, longUrl: data.long_url, expiresAt: data.expires_at });
   return data as UrlRow;
 }
 
 async function incrementClick(supabase: SupabaseClient, code: string): Promise<void> {
+  console.log(`[DB] Incrementing click count for: ${code}`);
   // Use upsert with onConflict and atomic increment via Postgres function
   const { error } = await supabase
     .rpc('increment_click_total', {
       p_short_code: code
     });
   if (error) {
+    console.error(`[DB] Failed to increment click:`, error);
     throw new Error(`Failed to increment click total: ${error.message}`);
   }
+  console.log(`[DB] Click incremented successfully for: ${code}`);
 }
 
 // Cache functions (Redis)
 async function cacheGet(env: Bindings, code: string): Promise<string | null> {
+  console.log(`[CACHE] GET r:${code}`);
   const redis = getRedisClient(env);
-  return await redis.get<string>(`r:${code}`);
+  const result = await redis.get<string>(`r:${code}`);
+  console.log(`[CACHE] ${result ? 'HIT' : 'MISS'} r:${code}`, { result });
+  return result;
 }
 
 async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds?: number): Promise<void> {
-  const redis = getRedisClient(env);
   const ttl = ttlSeconds ?? 86400; // Default 24 hours
+  console.log(`[CACHE] SET r:${code}`, { longUrl, ttl });
+  const redis = getRedisClient(env);
   await redis.set(`r:${code}`, longUrl, { ex: ttl });
+  console.log(`[CACHE] SET SUCCESS r:${code}`);
 }
 
 // QR generation function (simplified - just generates QR for the short URL)
@@ -207,7 +231,6 @@ app.post("/api/shorten", async (c) => {
 
   // Create clients once per request
   const supabase = getSupabaseClient(c.env);
-  const redis = getRedisClient(c.env);
 
   let lastError: unknown;
   for (let i = 0; i < 3; i++) {
@@ -313,44 +336,85 @@ app.get("/health", (c) => {
 
 // Catch-all route for short code redirects (must be last!)
 app.get("/:code", async (c) => {
+  const startTime = Date.now();
   const code = c.req.param("code");
 
+  console.log(`\n[REDIRECT] ===== New request for code: ${code} =====`);
+  console.log(`[REDIRECT] Request URL: ${c.req.url}`);
+  console.log(`[REDIRECT] Environment vars check:`, {
+    hasSupabaseUrl: !!c.env.SUPABASE_URL,
+    hasSupabaseKey: !!c.env.SUPABASE_SERVICE_KEY,
+    hasRedisUrl: !!c.env.REDIS_URL,
+    hasRedisToken: !!c.env.REDIS_TOKEN,
+    publicBaseUrl: c.env.PUBLIC_BASE_URL
+  });
+
   if (!code || code.includes("/")) {
+    console.log(`[REDIRECT] Invalid code format: ${code}`);
     return c.json({ error: "not found" }, 404);
   }
 
-  // Create clients once per request
-  const supabase = getSupabaseClient(c.env);
+  try {
+    // Create clients once per request
+    console.log(`[REDIRECT] Creating Supabase client...`);
+    const supabase = getSupabaseClient(c.env);
+    console.log(`[REDIRECT] Supabase client created`);
 
-  // Check cache first
-  const cached = await cacheGet(c.env, code);
-  if (cached) {
-    return c.redirect(cached, 301);
-  }
-
-  // Look up in database
-  const row = await findUrlByCode(supabase, code);
-  if (!row) {
-    return c.json({ error: "not found" }, 404);
-  }
-
-  // Check if expired
-  if (row.expires_at) {
-    const expires = new Date(row.expires_at);
-    if (expires.getTime() < Date.now()) {
-      return c.json({ error: "expired" }, 410);
+    // Check cache first
+    console.log(`[REDIRECT] Checking cache...`);
+    const cached = await cacheGet(c.env, code);
+    if (cached) {
+      console.log(`[REDIRECT] Cache HIT! Redirecting to: ${cached}`);
+      console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
+      return c.redirect(cached, 301);
     }
+    console.log(`[REDIRECT] Cache MISS, checking database...`);
+
+    // Look up in database
+    const row = await findUrlByCode(supabase, code);
+    if (!row) {
+      console.log(`[REDIRECT] URL not found in database`);
+      console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
+      return c.json({ error: "not found" }, 404);
+    }
+
+    // Check if expired
+    if (row.expires_at) {
+      const expires = new Date(row.expires_at);
+      const now = Date.now();
+      console.log(`[REDIRECT] Checking expiration:`, {
+        expiresAt: row.expires_at,
+        expiresTimestamp: expires.getTime(),
+        now,
+        isExpired: expires.getTime() < now
+      });
+      if (expires.getTime() < now) {
+        console.log(`[REDIRECT] URL expired`);
+        console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
+        return c.json({ error: "expired" }, 410);
+      }
+    }
+
+    // Calculate TTL: use expiration time if set, otherwise default 24hrs
+    const cacheTtl = row.expires_at
+      ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
+      : undefined;
+    console.log(`[REDIRECT] Cache TTL calculated:`, { cacheTtl });
+
+    // Cache and redirect
+    console.log(`[REDIRECT] Caching URL and incrementing click count...`);
+    void cacheSet(c.env, code, row.long_url, cacheTtl);
+    void incrementClick(supabase, code);
+
+    console.log(`[REDIRECT] SUCCESS! Redirecting to: ${row.long_url}`);
+    console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
+    return c.redirect(row.long_url, 301);
+  } catch (error) {
+    console.error(`[REDIRECT] ERROR:`, error);
+    console.error(`[REDIRECT] Error stack:`, (error as Error).stack);
+    console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
+    throw error;
   }
-
-  // Calculate TTL: use expiration time if set, otherwise default 24hrs
-  const cacheTtl = row.expires_at
-    ? Math.max(60, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000))
-    : undefined;
-
-  // Cache and redirect
-  void cacheSet(c.env, code, row.long_url, cacheTtl);
-  void incrementClick(supabase, code);
-  return c.redirect(row.long_url, 301);
 });
 
 export default app;
