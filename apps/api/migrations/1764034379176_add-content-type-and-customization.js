@@ -34,5 +34,5 @@ export const up = (pgm) => {
  */
 export const down = (pgm) => {
   pgm.dropColumn('urls', 'content_type');
-  pgm.dropColumn('urls', 'qr_config');
+  pgm.dropColumn('urls', 'qr_config', { ifExists: true });
 };
