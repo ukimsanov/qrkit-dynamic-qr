@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "568051052fcb248c756d306dece6cfb7"  # ularkimsanov7@gmail.com
 
 [vars]
-NEXT_PUBLIC_API_URL = "https://qr-shortener-api.ularkimsanov7.workers.dev"
+NEXT_PUBLIC_API_URL = "https://b.ularkimsanov.com"
 
 [assets]
 directory = ".open-next/assets"
