@@ -38,27 +38,9 @@ export function QRPreview({ shortUrl, qrUrl, code, loading = false }: QRPreviewP
 
   return (
     <div className="h-full flex flex-col">
-      {/* Card container with gradient border effect */}
-      <div className="relative group h-full">
-        {/* Animated gradient border */}
-        <motion.div
-          className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-primary/30 via-accent/30 to-primary/30 opacity-0 group-hover:opacity-100 blur-sm"
-          animate={{
-            backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-          }}
-          transition={{
-            duration: 5,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          style={{
-            backgroundSize: "200% 100%",
-          }}
-        />
-
-        {/* Main card */}
-        <div className="relative h-full rounded-2xl border-2 bg-card p-8 shadow-lg">
-          <AnimatePresence mode="wait">
+      {/* Main card */}
+      <div className="h-full rounded-2xl border-2 bg-card p-8 shadow-lg">
+        <AnimatePresence mode="wait">
             {/* Empty State */}
             {!loading && !qrUrl && (
               <motion.div
@@ -236,8 +218,7 @@ export function QRPreview({ shortUrl, qrUrl, code, loading = false }: QRPreviewP
                 </motion.div>
               </motion.div>
             )}
-          </AnimatePresence>
-        </div>
+        </AnimatePresence>
       </div>
     </div>
   );
