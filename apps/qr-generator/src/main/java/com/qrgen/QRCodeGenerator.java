@@ -9,6 +9,7 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import com.google.zxing.qrcode.decoder.Mode;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -117,7 +118,79 @@ public class QRCodeGenerator {
         
         return new QRResult(outputPath, version, mode);
     }
-    
+
+    /**
+     * Generates a QR code to ByteArrayOutputStream with automatic mode detection
+     * Useful for AWS Lambda where file system is read-only
+     *
+     * @param data The string data to encode
+     * @param outputStream The ByteArrayOutputStream to write PNG data to
+     * @return QRResult containing generation details
+     * @throws IllegalArgumentException if data exceeds capacity
+     * @throws IOException if stream writing fails
+     * @throws WriterException if QR code generation fails
+     */
+    public QRResult generateQRCodeToStream(String data, ByteArrayOutputStream outputStream)
+            throws IOException, WriterException {
+        Mode mode = detectOptimalMode(data);
+        return generateQRCodeToStream(data, outputStream, mode);
+    }
+
+    /**
+     * Generates a QR code to ByteArrayOutputStream with specified encoding mode
+     * Useful for AWS Lambda where file system is read-only
+     *
+     * @param data The string data to encode
+     * @param outputStream The ByteArrayOutputStream to write PNG data to
+     * @param mode The encoding mode (BYTE or ALPHANUMERIC)
+     * @return QRResult containing generation details
+     * @throws IllegalArgumentException if data exceeds capacity or mode is invalid
+     * @throws IOException if stream writing fails
+     * @throws WriterException if QR code generation fails
+     */
+    public QRResult generateQRCodeToStream(String data, ByteArrayOutputStream outputStream, Mode mode)
+            throws IOException, WriterException {
+
+        if (mode != Mode.BYTE && mode != Mode.ALPHANUMERIC) {
+            throw new IllegalArgumentException("Only BYTE and ALPHANUMERIC modes are supported");
+        }
+
+        // Validate data against mode
+        if (mode == Mode.ALPHANUMERIC && !isAlphanumeric(data)) {
+            throw new IllegalArgumentException(
+                "Data contains characters not supported in alphanumeric mode. " +
+                "Alphanumeric supports: 0-9, A-Z, space, and $ % * + - . / :"
+            );
+        }
+
+        // Determine required version based on data length and mode
+        int version = getRequiredVersion(data, mode);
+
+        if (version > MAX_VERSION) {
+            int maxCapacity = mode == Mode.BYTE ?
+                BYTE_CAPACITY[MAX_VERSION - 1] : ALPHANUMERIC_CAPACITY[MAX_VERSION - 1];
+            throw new IllegalArgumentException(
+                String.format("Data exceeds maximum capacity. Mode: %s, Max capacity: %d %s, Your data: %d %s",
+                    mode, maxCapacity, mode == Mode.BYTE ? "bytes" : "characters",
+                    data.length(), mode == Mode.BYTE ? "bytes" : "characters")
+            );
+        }
+
+        // Configure QR code generation
+        Map<EncodeHintType, Object> hints = new HashMap<>();
+        hints.put(EncodeHintType.ERROR_CORRECTION, ERROR_CORRECTION);
+        hints.put(EncodeHintType.QR_VERSION, version);
+
+        // Generate QR code
+        QRCodeWriter qrCodeWriter = new QRCodeWriter();
+        BitMatrix bitMatrix = qrCodeWriter.encode(data, BarcodeFormat.QR_CODE, 300, 300, hints);
+
+        // Write to stream
+        MatrixToImageWriter.writeToStream(bitMatrix, "PNG", outputStream);
+
+        return new QRResult(null, version, mode);
+    }
+
     /**
      * Detects the optimal encoding mode for the given data
      * Prefers alphanumeric mode when possible (more efficient)
