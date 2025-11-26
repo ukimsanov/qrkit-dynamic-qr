@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import useSWR from "swr";
@@ -36,6 +37,9 @@ import {
   ExternalLink,
   Activity,
   Zap,
+  Edit3,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 type AnalyticsData = {
@@ -93,7 +97,7 @@ export default function AnalyticsPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://b.ularkimsanov.com";
 
   // Use SWR with 30-second polling (matches Plausible Analytics)
-  const { data, error, isLoading } = useSWR<AnalyticsData>(
+  const { data, error, isLoading, mutate } = useSWR<AnalyticsData>(
     `${apiUrl}/api/analytics/${code}`,
     fetcher,
     {
@@ -105,6 +109,47 @@ export default function AnalyticsPage() {
       dedupingInterval: 2000, // Dedupe requests within 2 seconds
     }
   );
+
+  // Update destination URL state
+  const [newUrl, setNewUrl] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const handleUpdateUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdating(true);
+    setUpdateError(null);
+    setUpdateSuccess(false);
+
+    try {
+      const res = await fetch(`${apiUrl}/api/update`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code,
+          new_url: newUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to update URL");
+      }
+
+      setUpdateSuccess(true);
+      setNewUrl("");
+      // Refresh analytics data to show new URL
+      mutate();
+
+      // Hide success message after 3 seconds
+      setTimeout(() => setUpdateSuccess(false), 3000);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : "Failed to update URL");
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -254,6 +299,96 @@ export default function AnalyticsPage() {
             </div>
           </motion.div>
         </div>
+      </div>
+
+      {/* Update Destination URL - Dynamic QR Code Feature! */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
+          <Card className="border-2 border-primary/20 bg-linear-to-br from-primary/5 to-transparent">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Edit3 className="h-5 w-5 text-primary" />
+                Update Destination URL
+              </CardTitle>
+              <CardDescription>
+                Change where this QR code points to - the magic of dynamic QR codes!
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUpdateUrl} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Current Destination</label>
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <span className="text-sm text-muted-foreground truncate flex-1">
+                      {data.long_url}
+                    </span>
+                    <a
+                      href={data.long_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:text-primary/80 transition"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">New Destination URL</label>
+                  <input
+                    type="url"
+                    value={newUrl}
+                    onChange={(e) => setNewUrl(e.target.value)}
+                    placeholder="https://example.com/new-destination"
+                    required
+                    className="w-full rounded-lg border bg-input px-4 py-3 text-sm outline-none ring-1 ring-transparent focus:border-primary focus:ring-primary/20 transition"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={updating || !newUrl}
+                    className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  >
+                    {updating ? "Updating..." : "Update URL"}
+                  </button>
+
+                  {updateSuccess && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      URL updated successfully!
+                    </motion.div>
+                  )}
+
+                  {updateError && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center gap-2 text-sm text-destructive"
+                    >
+                      <AlertCircle className="h-4 w-4" />
+                      {updateError}
+                    </motion.div>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  💡 The QR code stays the same, but it will now redirect to the new URL instantly. Cache is automatically cleared.
+                </p>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
       {/* Bento Grid Layout - Not generic three-column! */}

@@ -172,6 +172,13 @@ async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds
   console.log(`[CACHE] SET SUCCESS r:${code}`);
 }
 
+async function cacheDelete(env: Bindings, code: string): Promise<void> {
+  console.log(`[CACHE] DELETE r:${code}`);
+  const redis = getRedisClient(env);
+  await redis.del(`r:${code}`);
+  console.log(`[CACHE] DELETE SUCCESS r:${code}`);
+}
+
 // Analytics logging function - tracks QR code scans (async, fire-and-forget)
 async function logScan(
   supabase: SupabaseClient,
@@ -558,6 +565,69 @@ app.get("/api/analytics/:code", async (c) => {
   } catch (error) {
     console.error("[ANALYTICS] Error processing analytics:", error);
     return c.json({ error: "Failed to process analytics" }, 500);
+  }
+});
+
+// Update destination URL for a QR code - enables dynamic QR codes!
+app.post("/api/update", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { code, new_url } = body;
+
+    // Validate inputs
+    if (!code || typeof code !== "string") {
+      return c.json({ error: "Short code is required" }, 400);
+    }
+
+    if (!new_url || typeof new_url !== "string") {
+      return c.json({ error: "New URL is required" }, 400);
+    }
+
+    // Validate URL format
+    try {
+      new URL(new_url);
+    } catch {
+      return c.json({ error: "Invalid URL format" }, 400);
+    }
+
+    const supabase = getSupabaseClient(c.env);
+
+    // Check if URL exists
+    const urlRow = await findUrlByCode(supabase, code);
+    if (!urlRow) {
+      return c.json({ error: "Short code not found" }, 404);
+    }
+
+    console.log(`[UPDATE] Updating ${code} from ${urlRow.long_url} to ${new_url}`);
+
+    // Update the URL in database
+    const { error: updateError } = await supabase
+      .from("urls")
+      .update({
+        long_url: new_url,
+        updated_at: new Date().toISOString()
+      })
+      .eq("short_code", code);
+
+    if (updateError) {
+      console.error("[UPDATE] Database error:", updateError);
+      return c.json({ error: "Failed to update URL" }, 500);
+    }
+
+    // CRITICAL: Invalidate cache so new URL takes effect immediately
+    console.log(`[UPDATE] Invalidating cache for ${code}`);
+    await cacheDelete(c.env, code);
+
+    console.log(`[UPDATE] Successfully updated ${code} ✓`);
+
+    return c.json({
+      short_code: code,
+      new_url,
+      message: "QR code destination updated successfully"
+    });
+  } catch (error) {
+    console.error("[UPDATE] Error:", error);
+    return c.json({ error: "Failed to update URL" }, 500);
   }
 });
 
