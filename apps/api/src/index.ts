@@ -172,29 +172,45 @@ async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds
   console.log(`[CACHE] SET SUCCESS r:${code}`);
 }
 
-// QR generation function (simplified - just generates QR for the short URL)
+// QR generation function - calls AWS Lambda to generate QR code
 async function generateQr(env: Bindings, shortUrl: string): Promise<{ status: "ready" | "failed"; qrUrl: string | null }> {
   if (!env.QR_SERVICE_URL) {
+    console.log("[QR] QR_SERVICE_URL not configured, skipping QR generation");
     return { status: "failed", qrUrl: null };
   }
 
   try {
+    console.log(`[QR] Calling Lambda to generate QR for: ${shortUrl}`);
     const response = await fetch(env.QR_SERVICE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        content: shortUrl
+        text: shortUrl
       })
     });
 
     if (!response.ok) {
+      console.error(`[QR] Lambda returned error: ${response.status} ${response.statusText}`);
       return { status: "failed", qrUrl: null };
     }
 
-    const result = await response.json() as { qr_url: string };
-    return { status: "ready", qrUrl: result.qr_url };
+    const result = await response.json() as {
+      success: boolean;
+      dataUrl?: string;
+      error?: string;
+      version?: number;
+      mode?: string;
+    };
+
+    if (!result.success || !result.dataUrl) {
+      console.error(`[QR] Lambda failed: ${result.error || "Unknown error"}`);
+      return { status: "failed", qrUrl: null };
+    }
+
+    console.log(`[QR] Generated successfully - Version: ${result.version}, Mode: ${result.mode}`);
+    return { status: "ready", qrUrl: result.dataUrl };
   } catch (error) {
-    console.error("QR generation failed:", error);
+    console.error("[QR] QR generation failed:", error);
     return { status: "failed", qrUrl: null };
   }
 }
