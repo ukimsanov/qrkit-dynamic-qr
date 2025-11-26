@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
+import useSWR from "swr";
 import {
   AreaChart,
   Area,
@@ -77,37 +77,36 @@ const COUNTRY_COLORS = [
   "hsl(var(--chart-5))",
 ];
 
+// Fetcher function for SWR
+const fetcher = async (url: string): Promise<AnalyticsData> => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.error || "Failed to fetch analytics");
+  }
+  return res.json();
+};
+
 export default function AnalyticsPage() {
   const params = useParams();
   const code = params.code as string;
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://b.ularkimsanov.com";
 
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://b.ularkimsanov.com";
-        const res = await fetch(`${apiUrl}/api/analytics/${code}`);
+  // Use SWR with 30-second polling (matches Plausible Analytics)
+  const { data, error, isLoading } = useSWR<AnalyticsData>(
+    `${apiUrl}/api/analytics/${code}`,
+    fetcher,
+    {
+      refreshInterval: 30000, // Poll every 30 seconds
+      refreshWhenHidden: false, // Stop polling when tab is hidden
+      refreshWhenOffline: false, // Stop polling when offline
+      revalidateOnFocus: true, // Refresh when user focuses tab
+      revalidateOnReconnect: true, // Refresh when reconnecting
+      dedupingInterval: 2000, // Dedupe requests within 2 seconds
+    }
+  );
 
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to fetch analytics");
-        }
-
-        const analytics = await res.json();
-        setData(analytics);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAnalytics();
-  }, [code]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -133,7 +132,7 @@ export default function AnalyticsPage() {
           <div className="text-6xl mb-4">😕</div>
           <h1 className="text-2xl font-bold mb-2">Oops!</h1>
           <p className="text-muted-foreground mb-6">
-            {error || "QR code not found"}
+            {error?.message || "QR code not found"}
           </p>
           <a
             href="/"
@@ -403,7 +402,7 @@ export default function AnalyticsPage() {
               <CardContent>
                 {data.top_countries.length > 0 ? (
                   <div className="space-y-3">
-                    {data.top_countries.slice(0, 5).map((country, index) => (
+                    {data.top_countries.slice(0, 5).map((country: { country: string; count: number }, index: number) => (
                       <div key={country.country} className="flex items-center gap-3">
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
