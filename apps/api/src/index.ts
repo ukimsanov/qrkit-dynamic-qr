@@ -172,6 +172,39 @@ async function cacheSet(env: Bindings, code: string, longUrl: string, ttlSeconds
   console.log(`[CACHE] SET SUCCESS r:${code}`);
 }
 
+async function cacheDelete(env: Bindings, code: string): Promise<void> {
+  console.log(`[CACHE] DELETE r:${code}`);
+  const redis = getRedisClient(env);
+  await redis.del(`r:${code}`);
+  console.log(`[CACHE] DELETE SUCCESS r:${code}`);
+}
+
+// Analytics logging function - tracks QR code scans (async, fire-and-forget)
+async function logScan(
+  supabase: SupabaseClient,
+  shortCode: string,
+  request: Request
+): Promise<void> {
+  // Fire and forget - don't await this in the redirect handler
+  const analytics = {
+    short_code: shortCode,
+    scanned_at: new Date().toISOString(),
+    user_agent: request.headers.get("User-Agent") || null,
+    referer: request.headers.get("Referer") || null,
+    country: (request as any).cf?.country || null,
+    city: (request as any).cf?.city || null,
+  };
+
+  // Insert async (don't slow down redirect)
+  try {
+    await supabase.from("url_scans").insert(analytics);
+    console.log(`[ANALYTICS] Logged scan for ${shortCode}`);
+  } catch (error) {
+    // Don't fail the redirect if analytics fails
+    console.error(`[ANALYTICS] Failed to log scan:`, error);
+  }
+}
+
 // QR generation function - calls AWS Lambda to generate QR code
 async function generateQr(env: Bindings, shortUrl: string): Promise<{ status: "ready" | "failed"; qrUrl: string | null }> {
   if (!env.QR_SERVICE_URL) {
@@ -330,6 +363,59 @@ app.get("/api/resolve/:code", async (c) => {
   return c.json({ long_url: row.long_url });
 });
 
+// Update URL destination endpoint (enables dynamic QR codes)
+app.patch("/api/:code", async (c) => {
+  const shortCode = c.req.param("code");
+  const body = await c.req.json<{ long_url: string }>();
+
+  if (!body?.long_url) {
+    return c.json({ error: "long_url is required" }, 400);
+  }
+
+  if (!isValidUrl(body.long_url)) {
+    return c.json({ error: "long_url is invalid" }, 400);
+  }
+
+  // Create client once per request
+  const supabase = getSupabaseClient(c.env);
+
+  // Update database
+  const { data, error } = await supabase
+    .from("urls")
+    .update({
+      long_url: body.long_url,
+      updated_at: new Date().toISOString()
+    })
+    .eq("short_code", shortCode)
+    .select()
+    .single();
+
+  if (error || !data) {
+    if (error?.code === "PGRST116") {
+      return c.json({ error: "Short code not found" }, 404);
+    }
+    console.error(`[UPDATE] Database error:`, error);
+    return c.json({ error: "Failed to update URL" }, 500);
+  }
+
+  // Invalidate cache to ensure new destination is used immediately
+  try {
+    const redis = getRedisClient(c.env);
+    await redis.del(`r:${shortCode}`);
+    console.log(`[UPDATE] Cache invalidated for ${shortCode}`);
+  } catch (error) {
+    // Don't fail the update if cache invalidation fails
+    console.error(`[UPDATE] Failed to invalidate cache:`, error);
+  }
+
+  return c.json({
+    success: true,
+    short_code: shortCode,
+    new_url: body.long_url,
+    message: "QR code destination updated successfully"
+  });
+});
+
 // Analytics hit endpoint
 app.post("/api/analytics/hit", async (c) => {
   const body = await c.req.json<{ code?: string }>();
@@ -343,6 +429,206 @@ app.post("/api/analytics/hit", async (c) => {
 
   await incrementClick(supabase, body.code);
   return c.json({ ok: true });
+});
+
+// Analytics dashboard endpoint - returns aggregated metrics for a QR code
+app.get("/api/analytics/:code", async (c) => {
+  const shortCode = c.req.param("code");
+
+  if (!shortCode) {
+    return c.json({ error: "Short code is required" }, 400);
+  }
+
+  const supabase = getSupabaseClient(c.env);
+
+  // Verify the short code exists
+  const urlRow = await findUrlByCode(supabase, shortCode);
+  if (!urlRow) {
+    return c.json({ error: "Short code not found" }, 404);
+  }
+
+  try {
+    // Get all scans for this short code
+    const { data: scans, error: scansError } = await supabase
+      .from("url_scans")
+      .select("*")
+      .eq("short_code", shortCode)
+      .order("scanned_at", { ascending: false });
+
+    if (scansError) {
+      console.error("[ANALYTICS] Error fetching scans:", scansError);
+      return c.json({ error: "Failed to fetch analytics" }, 500);
+    }
+
+    const scanData = scans || [];
+    const totalScans = scanData.length;
+
+    // Calculate scans today (UTC)
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const scansToday = scanData.filter(
+      (scan) => new Date(scan.scanned_at) >= todayStart
+    ).length;
+
+    // Top countries (with counts)
+    const countryCounts: Record<string, number> = {};
+    scanData.forEach((scan) => {
+      if (scan.country) {
+        countryCounts[scan.country] = (countryCounts[scan.country] || 0) + 1;
+      }
+    });
+    const topCountries = Object.entries(countryCounts)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Device breakdown (parse user_agent)
+    let mobileCount = 0;
+    let desktopCount = 0;
+    let tabletCount = 0;
+    let unknownCount = 0;
+
+    scanData.forEach((scan) => {
+      const ua = scan.user_agent?.toLowerCase() || "";
+      if (!ua) {
+        unknownCount++;
+      } else if (/(tablet|ipad|playbook|silk)|(android(?!.*mobile))/i.test(ua)) {
+        tabletCount++;
+      } else if (/mobile|iphone|ipod|android|blackberry|opera mini|windows phone/i.test(ua)) {
+        mobileCount++;
+      } else if (ua) {
+        desktopCount++;
+      } else {
+        unknownCount++;
+      }
+    });
+
+    const devices = {
+      mobile: mobileCount,
+      desktop: desktopCount,
+      tablet: tabletCount,
+      unknown: unknownCount
+    };
+
+    // Time-series data (scans per day for last 7 days)
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      date.setUTCHours(0, 0, 0, 0);
+
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const count = scanData.filter((scan) => {
+        const scanDate = new Date(scan.scanned_at);
+        return scanDate >= date && scanDate < nextDay;
+      }).length;
+
+      last7Days.push({
+        date: date.toISOString().split("T")[0],
+        count
+      });
+    }
+
+    // Top cities (with counts)
+    const cityCounts: Record<string, number> = {};
+    scanData.forEach((scan) => {
+      if (scan.city) {
+        cityCounts[scan.city] = (cityCounts[scan.city] || 0) + 1;
+      }
+    });
+    const topCities = Object.entries(cityCounts)
+      .map(([city, count]) => ({ city, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Return aggregated analytics
+    return c.json({
+      short_code: shortCode,
+      short_url: `${c.env.PUBLIC_BASE_URL}/${shortCode}`,
+      long_url: urlRow.long_url,
+      created_at: urlRow.created_at,
+      total_scans: totalScans,
+      scans_today: scansToday,
+      top_countries: topCountries,
+      top_cities: topCities,
+      devices,
+      scans_over_time: last7Days,
+      recent_scans: scanData.slice(0, 10).map((scan) => ({
+        scanned_at: scan.scanned_at,
+        country: scan.country,
+        city: scan.city,
+        device: scan.user_agent?.toLowerCase().includes("mobile") ? "mobile" : "desktop"
+      }))
+    });
+  } catch (error) {
+    console.error("[ANALYTICS] Error processing analytics:", error);
+    return c.json({ error: "Failed to process analytics" }, 500);
+  }
+});
+
+// Update destination URL for a QR code - enables dynamic QR codes!
+app.post("/api/update", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { code, new_url } = body;
+
+    // Validate inputs
+    if (!code || typeof code !== "string") {
+      return c.json({ error: "Short code is required" }, 400);
+    }
+
+    if (!new_url || typeof new_url !== "string") {
+      return c.json({ error: "New URL is required" }, 400);
+    }
+
+    // Validate URL format
+    try {
+      new URL(new_url);
+    } catch {
+      return c.json({ error: "Invalid URL format" }, 400);
+    }
+
+    const supabase = getSupabaseClient(c.env);
+
+    // Check if URL exists
+    const urlRow = await findUrlByCode(supabase, code);
+    if (!urlRow) {
+      return c.json({ error: "Short code not found" }, 404);
+    }
+
+    console.log(`[UPDATE] Updating ${code} from ${urlRow.long_url} to ${new_url}`);
+
+    // Update the URL in database
+    const { error: updateError } = await supabase
+      .from("urls")
+      .update({
+        long_url: new_url,
+        updated_at: new Date().toISOString()
+      })
+      .eq("short_code", code);
+
+    if (updateError) {
+      console.error("[UPDATE] Database error:", updateError);
+      return c.json({ error: "Failed to update URL" }, 500);
+    }
+
+    // CRITICAL: Invalidate cache so new URL takes effect immediately
+    console.log(`[UPDATE] Invalidating cache for ${code}`);
+    await cacheDelete(c.env, code);
+
+    console.log(`[UPDATE] Successfully updated ${code} ✓`);
+
+    return c.json({
+      short_code: code,
+      new_url,
+      message: "QR code destination updated successfully"
+    });
+  } catch (error) {
+    console.error("[UPDATE] Error:", error);
+    return c.json({ error: "Failed to update URL" }, 500);
+  }
 });
 
 // Health check
@@ -381,8 +667,11 @@ app.get("/:code", async (c) => {
     const cached = await cacheGet(c.env, code);
     if (cached) {
       console.log(`[REDIRECT] Cache HIT! Redirecting to: ${cached}`);
+      // Log scan asynchronously (fire and forget - don't slow down redirect)
+      c.executionCtx.waitUntil(logScan(supabase, code, c.req.raw));
       console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
-      return c.redirect(cached, 301);
+      // Use 302 (temporary redirect) to allow dynamic URL updates
+      return c.redirect(cached, 302);
     }
     console.log(`[REDIRECT] Cache MISS, checking database...`);
 
@@ -419,12 +708,15 @@ app.get("/:code", async (c) => {
 
     // Cache and redirect
     console.log(`[REDIRECT] Caching URL and incrementing click count...`);
-    void cacheSet(c.env, code, row.long_url, cacheTtl);
-    void incrementClick(supabase, code);
+    c.executionCtx.waitUntil(cacheSet(c.env, code, row.long_url, cacheTtl));
+    c.executionCtx.waitUntil(incrementClick(supabase, code));
+    // Log scan asynchronously (fire and forget - don't slow down redirect)
+    c.executionCtx.waitUntil(logScan(supabase, code, c.req.raw));
 
     console.log(`[REDIRECT] SUCCESS! Redirecting to: ${row.long_url}`);
     console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
-    return c.redirect(row.long_url, 301);
+    // Use 302 (temporary redirect) to allow dynamic URL updates
+    return c.redirect(row.long_url, 302);
   } catch (error) {
     console.error(`[REDIRECT] ERROR:`, error);
     console.error(`[REDIRECT] Error stack:`, (error as Error).stack);
