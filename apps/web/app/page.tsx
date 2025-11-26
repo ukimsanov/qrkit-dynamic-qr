@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { BarChart3 } from "lucide-react";
 
 type ShortenResponse = {
   code: string;
@@ -31,17 +33,17 @@ export default function Home() {
 
   const handleCopyUrl = async () => {
     if (!result) return;
-    
+
     // Clear any existing timeout
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
-    
+
     try {
       await navigator.clipboard.writeText(result.short_url);
       setCopyStatus("copied");
       setCopyMessage("URL copied to clipboard");
-      
+
       // Reset to idle after 2 seconds
       copyTimeoutRef.current = setTimeout(() => {
         setCopyStatus("idle");
@@ -50,7 +52,7 @@ export default function Home() {
     } catch {
       setCopyStatus("error");
       setCopyMessage("Failed to copy URL");
-      
+
       // Reset to idle after 3 seconds
       copyTimeoutRef.current = setTimeout(() => {
         setCopyStatus("idle");
@@ -63,11 +65,11 @@ export default function Home() {
     const baseClass = "rounded-lg px-4 py-3 text-sm font-medium transition min-w-[80px]";
     switch (copyStatus) {
       case "copied":
-        return `${baseClass} bg-emerald-600 text-white`;
+        return `${baseClass} bg-primary text-primary-foreground`;
       case "error":
-        return `${baseClass} bg-red-600 text-white`;
+        return `${baseClass} bg-destructive text-destructive-foreground`;
       default:
-        return `${baseClass} bg-slate-800 text-slate-200 hover:bg-slate-700`;
+        return `${baseClass} bg-secondary text-secondary-foreground hover:bg-secondary/80`;
     }
   };
 
@@ -80,7 +82,7 @@ export default function Home() {
     setCopyMessage("");
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://b.ularkimsanov.com";
       const res = await fetch(`${apiUrl}/api/shorten`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -107,32 +109,32 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-black text-slate-50 px-4 py-8">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/70 p-8 shadow-xl backdrop-blur">
-        <h1 className="text-3xl font-bold tracking-tight">URL Shortener</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Create short, memorable links that are easy to share
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-2xl rounded-2xl border shadow-xl p-8 bg-card">
+        <h1 className="text-3xl font-bold tracking-tight">URL Shortener + QR Codes</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Create short, memorable links with dynamic QR codes and real-time analytics
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-6">
           {/* Long URL */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-200">Long URL *</label>
+            <label className="text-sm font-medium">Long URL *</label>
             <input
               required
               type="url"
               value={longUrl}
               onChange={(e) => setLongUrl(e.target.value)}
               placeholder="https://example.com/very/long/path/to/page"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none ring-1 ring-transparent focus:border-emerald-500 focus:ring-emerald-500/20 transition"
+              className="w-full rounded-lg border bg-input px-4 py-3 text-sm outline-none ring-1 ring-transparent focus:border-primary focus:ring-primary/20 transition"
             />
           </div>
 
           {/* Optional Fields */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm text-slate-200">
-                Custom Alias <span className="text-slate-400">(max 7 chars)</span>
+              <label className="text-sm">
+                Custom Alias <span className="text-muted-foreground">(max 7 chars)</span>
               </label>
               <input
                 value={alias}
@@ -141,47 +143,47 @@ export default function Home() {
                 pattern="^[a-zA-Z0-9\-_]+$"
                 title="Only letters, numbers, hyphens, and underscores are allowed"
                 placeholder="mylink"
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none ring-1 ring-transparent focus:border-emerald-500 focus:ring-emerald-500/20 transition"
+                className="w-full rounded-lg border bg-input px-4 py-3 text-sm outline-none ring-1 ring-transparent focus:border-primary focus:ring-primary/20 transition"
               />
-              <p className="text-xs text-slate-400">{alias.length}/7 characters</p>
+              <p className="text-xs text-muted-foreground">{alias.length}/7 characters</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-slate-200">Expires At</label>
+              <label className="text-sm">Expires At</label>
               <input
                 type="datetime-local"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none ring-1 ring-transparent focus:border-emerald-500 focus:ring-emerald-500/20 transition"
+                className="w-full rounded-lg border bg-input px-4 py-3 text-sm outline-none ring-1 ring-transparent focus:border-primary focus:ring-primary/20 transition"
               />
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="w-full inline-flex items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full"
           >
             {loading ? "Creating..." : "Shorten URL"}
-          </button>
+          </Button>
         </form>
 
         {error && (
-          <div className="mt-6 rounded-lg border border-red-500/40 bg-red-900/30 px-4 py-3 text-sm text-red-100">
+          <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
         {result && (
-          <div className="mt-6 space-y-4 rounded-lg border border-emerald-800/40 bg-emerald-950/30 p-6">
+          <div className="mt-6 space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-6">
             {/* Accessible status announcement region */}
             <div className="sr-only" aria-live="polite" aria-atomic="true">
               {copyMessage}
             </div>
             <div className="space-y-2">
-              <span className="text-sm font-medium text-slate-200">Short URL:</span>
+              <span className="text-sm font-medium">Short URL:</span>
               <div className="flex items-center gap-3">
                 <a
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-emerald-300 hover:text-emerald-200 transition break-all"
+                  className="flex-1 rounded-lg border bg-background px-4 py-3 text-sm text-primary hover:text-primary/80 transition break-all font-medium"
                   href={result.short_url}
                   target="_blank"
                   rel="noreferrer"
@@ -207,26 +209,37 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            <div className="text-xs text-slate-400">
-              Code: <span className="font-mono text-emerald-300">{result.code}</span>
+            <div className="text-xs text-muted-foreground">
+              Code: <span className="font-mono text-foreground font-medium">{result.code}</span>
+            </div>
+
+            {/* Analytics Link */}
+            <div className="pt-4 border-t">
+              <a
+                href={`/analytics/${result.code}`}
+                className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+              >
+                <BarChart3 className="h-4 w-4" />
+                View Analytics Dashboard
+              </a>
             </div>
 
             {/* QR Code Display */}
             {result.qr_url ? (
-              <div className="mt-4 pt-4 border-t border-slate-700">
-                <span className="text-sm font-medium text-slate-200">QR Code:</span>
+              <div className="mt-4 pt-4 border-t">
+                <span className="text-sm font-medium">QR Code:</span>
                 <div className="mt-3 flex justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={result.qr_url}
                     alt="QR code"
-                    className="h-48 w-48 rounded-lg border border-slate-700 bg-white p-2 shadow-lg"
+                    className="h-48 w-48 rounded-lg border bg-white p-2 shadow-lg"
                   />
                 </div>
               </div>
             ) : (
-              <div className="mt-4 pt-4 border-t border-slate-700 text-sm text-slate-400">
-                QR code will be generated by your teammate's service...
+              <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
+                QR code generated successfully
               </div>
             )}
           </div>

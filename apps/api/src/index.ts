@@ -424,6 +424,143 @@ app.post("/api/analytics/hit", async (c) => {
   return c.json({ ok: true });
 });
 
+// Analytics dashboard endpoint - returns aggregated metrics for a QR code
+app.get("/api/analytics/:code", async (c) => {
+  const shortCode = c.req.param("code");
+
+  if (!shortCode) {
+    return c.json({ error: "Short code is required" }, 400);
+  }
+
+  const supabase = getSupabaseClient(c.env);
+
+  // Verify the short code exists
+  const urlRow = await findUrlByCode(supabase, shortCode);
+  if (!urlRow) {
+    return c.json({ error: "Short code not found" }, 404);
+  }
+
+  try {
+    // Get all scans for this short code
+    const { data: scans, error: scansError } = await supabase
+      .from("url_scans")
+      .select("*")
+      .eq("short_code", shortCode)
+      .order("scanned_at", { ascending: false });
+
+    if (scansError) {
+      console.error("[ANALYTICS] Error fetching scans:", scansError);
+      return c.json({ error: "Failed to fetch analytics" }, 500);
+    }
+
+    const scanData = scans || [];
+    const totalScans = scanData.length;
+
+    // Calculate scans today (UTC)
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const scansToday = scanData.filter(
+      (scan) => new Date(scan.scanned_at) >= todayStart
+    ).length;
+
+    // Top countries (with counts)
+    const countryCounts: Record<string, number> = {};
+    scanData.forEach((scan) => {
+      if (scan.country) {
+        countryCounts[scan.country] = (countryCounts[scan.country] || 0) + 1;
+      }
+    });
+    const topCountries = Object.entries(countryCounts)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Device breakdown (parse user_agent)
+    let mobileCount = 0;
+    let desktopCount = 0;
+    let tabletCount = 0;
+    let unknownCount = 0;
+
+    scanData.forEach((scan) => {
+      const ua = scan.user_agent?.toLowerCase() || "";
+      if (!ua) {
+        unknownCount++;
+      } else if (/(tablet|ipad|playbook|silk)|(android(?!.*mobile))/i.test(ua)) {
+        tabletCount++;
+      } else if (/mobile|iphone|ipod|android|blackberry|opera mini|windows phone/i.test(ua)) {
+        mobileCount++;
+      } else if (ua) {
+        desktopCount++;
+      } else {
+        unknownCount++;
+      }
+    });
+
+    const devices = {
+      mobile: mobileCount,
+      desktop: desktopCount,
+      tablet: tabletCount,
+      unknown: unknownCount
+    };
+
+    // Time-series data (scans per day for last 7 days)
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      date.setUTCHours(0, 0, 0, 0);
+
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const count = scanData.filter((scan) => {
+        const scanDate = new Date(scan.scanned_at);
+        return scanDate >= date && scanDate < nextDay;
+      }).length;
+
+      last7Days.push({
+        date: date.toISOString().split("T")[0],
+        count
+      });
+    }
+
+    // Top cities (with counts)
+    const cityCounts: Record<string, number> = {};
+    scanData.forEach((scan) => {
+      if (scan.city) {
+        cityCounts[scan.city] = (cityCounts[scan.city] || 0) + 1;
+      }
+    });
+    const topCities = Object.entries(cityCounts)
+      .map(([city, count]) => ({ city, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Return aggregated analytics
+    return c.json({
+      short_code: shortCode,
+      short_url: `${c.env.PUBLIC_BASE_URL}/${shortCode}`,
+      long_url: urlRow.long_url,
+      created_at: urlRow.created_at,
+      total_scans: totalScans,
+      scans_today: scansToday,
+      top_countries: topCountries,
+      top_cities: topCities,
+      devices,
+      scans_over_time: last7Days,
+      recent_scans: scanData.slice(0, 10).map((scan) => ({
+        scanned_at: scan.scanned_at,
+        country: scan.country,
+        city: scan.city,
+        device: scan.user_agent?.toLowerCase().includes("mobile") ? "mobile" : "desktop"
+      }))
+    });
+  } catch (error) {
+    console.error("[ANALYTICS] Error processing analytics:", error);
+    return c.json({ error: "Failed to process analytics" }, 500);
+  }
+});
+
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok" });
@@ -461,7 +598,7 @@ app.get("/:code", async (c) => {
     if (cached) {
       console.log(`[REDIRECT] Cache HIT! Redirecting to: ${cached}`);
       // Log scan asynchronously (fire and forget - don't slow down redirect)
-      void logScan(supabase, code, c.req.raw);
+      c.executionCtx.waitUntil(logScan(supabase, code, c.req.raw));
       console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
       // Use 302 (temporary redirect) to allow dynamic URL updates
       return c.redirect(cached, 302);
@@ -501,10 +638,10 @@ app.get("/:code", async (c) => {
 
     // Cache and redirect
     console.log(`[REDIRECT] Caching URL and incrementing click count...`);
-    void cacheSet(c.env, code, row.long_url, cacheTtl);
-    void incrementClick(supabase, code);
+    c.executionCtx.waitUntil(cacheSet(c.env, code, row.long_url, cacheTtl));
+    c.executionCtx.waitUntil(incrementClick(supabase, code));
     // Log scan asynchronously (fire and forget - don't slow down redirect)
-    void logScan(supabase, code, c.req.raw);
+    c.executionCtx.waitUntil(logScan(supabase, code, c.req.raw));
 
     console.log(`[REDIRECT] SUCCESS! Redirecting to: ${row.long_url}`);
     console.log(`[REDIRECT] Total time: ${Date.now() - startTime}ms\n`);
