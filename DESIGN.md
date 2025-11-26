@@ -329,9 +329,50 @@ Response: { "qr_url": "https://cdn.../qr.png" }
 
 ## Tech Stack Rationale
 
-- **Next.js 16**: Modern React, App Router, deployed on Cloudflare Workers
+### Backend
 - **Hono**: Ultra-fast edge framework, optimized for Workers (~12KB)
 - **Supabase (PostgreSQL)**: ACID, strong consistency, REST API
 - **Upstash Redis**: Serverless, global replication, REST API
 - **Cloudflare Workers**: Global edge (300+ locations), no cold starts
-- **TypeScript**: End-to-end type safety, fewer runtime errors
+- **TypeScript 5.9.3**: End-to-end type safety, fewer runtime errors
+
+### Frontend
+- **Next.js 16.0.4**: Modern React 19.2.0, App Router, deployed on Cloudflare Workers via OpenNext
+- **Tailwind CSS v4.1.17**: Utility-first CSS, OKLch color space for perceptually uniform colors
+- **Framer Motion 12.23.24**: Production-ready animations, minimal bundle size (~32KB)
+- **shadcn/ui**: Accessible component system (Radix UI primitives + Tailwind)
+- **SWR 2.3.6**: Stale-while-revalidate data fetching with automatic polling
+- **Recharts 3.5.0**: Composable charting library built on D3
+- **Geist Fonts**: Modern sans and mono fonts optimized for readability
+
+### Design Decisions
+
+**Why Tailwind v4?**
+- Native CSS variables support (no PostCSS plugins needed)
+- OKLch color space for perceptually uniform gradients
+- Smaller bundle size (~30% reduction vs v3)
+- Built-in theming system with `@theme` directive
+
+**Why Framer Motion?**
+- Tree-shakeable (~32KB for basic animations)
+- Declarative API (easier to maintain than CSS animations)
+- Automatic accessibility (reduced motion support)
+- Advanced features: layout animations, gesture recognition
+
+**Why SWR over React Query?**
+- Lighter weight (~5KB vs ~15KB)
+- Built-in polling with `refreshInterval`
+- Optimistic UI updates out of the box
+- Better for our use case (simple analytics fetching)
+
+**Why Recharts over Chart.js?**
+- Composable React components (no canvas manipulation)
+- Better TypeScript support
+- Theme-aware (easier to adapt to light/dark mode)
+- Smaller bundle size with tree-shaking
+
+**Why shadcn/ui over Material UI?**
+- Not a dependency (copy/paste components)
+- Full customization control
+- Smaller bundle (only include what you use)
+- Radix UI primitives (production-grade accessibility)

@@ -199,8 +199,8 @@ Copy the deployed URL: `https://qr-api.your-subdomain.workers.dev`
 ```bash
 cd apps/web
 
-# Build Next.js app for Workers
-npm run build
+# Build Next.js app for Workers using OpenNext
+npm run build:worker
 
 # Preview locally (optional)
 npm run preview
@@ -209,7 +209,22 @@ npm run preview
 npm run deploy
 ```
 
-**Note:** Before deploying, update the `NEXT_PUBLIC_API_URL` in [.env](.env) at the repository root with your actual API Worker URL.
+**Current Deployment**:
+- ✅ **Live URL**: https://qr-shortener-web.ularkimsanov7.workers.dev
+- ✅ **API URL**: https://b.ularkimsanov.com (configured in wrangler.toml)
+- ✅ **Deployment Date**: November 26, 2025
+- ✅ **Version**: 949f63fa-61e1-4e8d-805b-50140cbf5e72
+
+**Features Deployed**:
+- Modern two-column home page layout
+- Navigation bar with QR.io branding and dark mode toggle
+- QR Preview component with three states (empty/loading/success)
+- Analytics dashboard with real-time charts (SWR polling)
+- Dark mode with localStorage persistence (no flash on load)
+- Safari browser compatibility with -webkit- prefixes
+- Warm coral/peach color theme using OKLch color space
+
+**Note:** The `NEXT_PUBLIC_API_URL` is configured in [wrangler.toml](apps/web/wrangler.toml) as `https://b.ularkimsanov.com`.
 
 ---
 
@@ -247,9 +262,12 @@ curl -X POST https://qr-shortener-api.your-subdomain.workers.dev/api/shorten \
 ```
 
 **Test Web UI:**
-1. Open `https://qr-shortener-web.your-subdomain.workers.dev`
+1. Open `https://qr-shortener-web.ularkimsanov7.workers.dev` (currently live!)
 2. Enter a URL and generate QR code
 3. Verify QR code displays and short URL is created
+4. Test dark mode toggle (top right)
+5. Click "View Analytics" to see real-time dashboard
+6. Verify charts update every 30 seconds (SWR polling)
 
 **Test Redirects (via API Worker):**
 Visit `https://qr-shortener-api.your-subdomain.workers.dev/abc123` → Should redirect to Google
