@@ -228,8 +228,8 @@ curl -X POST https://YOUR_API_URL/generate \
 {
   "success": true,
   "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-  "version": 1,
-  "mode": "ALPHANUMERIC",
+  "version": 2,
+  "mode": "BYTE",
   "size": 19
 }
 ```
