@@ -155,7 +155,7 @@ aws lambda create-function \
 ```json
 {
   "statusCode": 200,
-  "body": "{\"success\":true,\"dataUrl\":\"data:image/png;base64,iVBORw0KG...\",\"version\":1,\"mode\":\"ALPHANUMERIC\"}",
+  "body": "{\"success\":true,\"dataUrl\":\"data:image/png;base64,iVBORw0KG...\",\"version\":2,\"mode\":\"BYTE\"}",
   "headers": {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*"
