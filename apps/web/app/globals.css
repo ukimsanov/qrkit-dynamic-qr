@@ -133,21 +133,20 @@
   }
 
   /* Smooth transitions for themed elements - Safari compatible */
+  /* Use combined transition for different properties with different durations */
   * {
-    -webkit-transition-property: background-color, border-color, fill, stroke;
-    transition-property: background-color, border-color, fill, stroke;
-    -webkit-transition-timing-function: ease-in-out;
-    transition-timing-function: ease-in-out;
-    -webkit-transition-duration: 200ms;
-    transition-duration: 200ms;
-  }
-
-  /* Instant color transition for text to avoid latency */
-  * {
-    -webkit-transition-property: color;
-    transition-property: color;
-    -webkit-transition-duration: 0ms;
-    transition-duration: 0ms;
+    -webkit-transition:
+      background-color 200ms ease-in-out,
+      border-color 200ms ease-in-out,
+      fill 200ms ease-in-out,
+      stroke 200ms ease-in-out,
+      color 0ms;
+    transition:
+      background-color 200ms ease-in-out,
+      border-color 200ms ease-in-out,
+      fill 200ms ease-in-out,
+      stroke 200ms ease-in-out,
+      color 0ms;
   }
 
   /* Prevent transition on initial load */
