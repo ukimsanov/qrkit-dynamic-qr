@@ -147,22 +147,10 @@ export default function Home() {
                   <Button
                     type="submit"
                     disabled={loading || !longUrl}
-                    className="w-full relative overflow-hidden group/submit"
+                    className="w-full"
                     size="lg"
                   >
-                    {/* Shimmer effect on hover - Safari compatible */}
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none"
-                      initial={{ x: "-100%" }}
-                      whileHover={{ x: "200%" }}
-                      transition={{ duration: 0.6 }}
-                      style={{
-                        willChange: "transform",
-                      }}
-                    />
-                    <span className="relative z-10">
-                      {loading ? "Generating..." : "Generate Short URL + QR Code"}
-                    </span>
+                    {loading ? "Generating..." : "Generate Short URL + QR Code"}
                   </Button>
                 </form>
 
@@ -177,30 +165,18 @@ export default function Home() {
                   </motion.div>
                 )}
 
-                {/* Success Message with Link */}
+                {/* Success Message */}
                 {result && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-6 space-y-3 rounded-lg border-2 border-primary/20 bg-primary/5 p-4"
+                    className="mt-6 rounded-lg border-2 border-primary/20 bg-primary/5 p-4"
                   >
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                       <span className="text-sm font-medium text-green-700 dark:text-green-400">
                         Successfully created!
                       </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-xs font-medium text-muted-foreground">Your Short URL:</span>
-                      <a
-                        href={result.short_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block text-sm font-mono font-semibold text-primary hover:underline break-all"
-                      >
-                        {result.short_url}
-                      </a>
                     </div>
                   </motion.div>
                 )}

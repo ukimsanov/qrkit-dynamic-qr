@@ -162,39 +162,14 @@ export function QRPreview({ shortUrl, qrUrl, code, loading = false }: QRPreviewP
                 transition={{ duration: 0.5, ease: "easeOut" }}
                 className="h-full flex flex-col"
               >
-                {/* QR Code Image with shimmer effect */}
+                {/* QR Code Image - clean and simple */}
                 <div className="flex-1 flex items-center justify-center mb-6">
-                  <div className="relative group/qr">
-                    {/* Shimmer effect on hover - Safari compatible */}
-                    <motion.div
-                      className="absolute -inset-4 bg-gradient-to-r from-transparent via-primary/10 to-transparent opacity-0 group-hover/qr:opacity-100 blur-xl pointer-events-none"
-                      animate={{
-                        x: ["-100%", "200%"],
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "linear",
-                      }}
-                      style={{
-                        willChange: "transform",
-                      }}
-                    />
-
-                    {/* QR Code */}
-                    <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      transition={{ duration: 0.2 }}
-                      className="relative"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={qrUrl}
-                        alt="QR Code"
-                        className="w-64 h-64 rounded-xl border-2 bg-white p-4 shadow-xl"
-                      />
-                    </motion.div>
-                  </div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrUrl}
+                    alt="QR Code"
+                    className="w-64 h-64 rounded-xl border-2 bg-white p-4 shadow-xl"
+                  />
                 </div>
 
                 {/* Short URL Display */}
@@ -240,20 +215,10 @@ export function QRPreview({ shortUrl, qrUrl, code, loading = false }: QRPreviewP
                 >
                   <Button
                     onClick={handleDownload}
-                    className="flex-1 relative overflow-hidden group/download"
+                    className="flex-1"
                   >
-                    {/* Shimmer effect - Safari compatible */}
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none"
-                      initial={{ x: "-100%" }}
-                      whileHover={{ x: "200%" }}
-                      transition={{ duration: 0.6 }}
-                      style={{
-                        willChange: "transform",
-                      }}
-                    />
-                    <Download className="h-4 w-4 mr-2 relative z-10" />
-                    <span className="relative z-10">Download QR</span>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download QR
                   </Button>
 
                   {code && (

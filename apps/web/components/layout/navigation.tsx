@@ -40,29 +40,10 @@ export function Navigation() {
               <QrCode className="h-8 w-8 text-primary" />
             </motion.div>
 
-            {/* Brand text with shimmer effect */}
-            <div className="relative overflow-hidden">
-              <span className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                QR.io
-              </span>
-              {/* Shimmer overlay - Safari compatible */}
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/30 to-transparent pointer-events-none"
-                animate={{
-                  x: ["-100%", "200%"],
-                }}
-                transition={{
-                  duration: 3,
-                  repeat: Infinity,
-                  ease: "linear",
-                  repeatDelay: 5,
-                }}
-                style={{
-                  maskImage: "linear-gradient(to right, transparent, black, transparent)",
-                  WebkitMaskImage: "linear-gradient(to right, transparent, black, transparent)",
-                }}
-              />
-            </div>
+            {/* Brand text - simple and clean */}
+            <span className="text-xl font-bold">
+              QR.io
+            </span>
           </Link>
 
           {/* Right side actions */}
