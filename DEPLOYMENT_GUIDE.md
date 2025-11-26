@@ -245,7 +245,7 @@ curl -X POST https://YOUR_API_URL/generate \
 Edit `apps/api/wrangler.toml`:
 ```toml
 [vars]
-PUBLIC_BASE_URL = "https://qr-shortener-api.ularkimsanov7.workers.dev"
+PUBLIC_BASE_URL = "https://b.ularkimsanov.com"
 QR_SERVICE_URL = "https://YOUR_API_GATEWAY_URL/generate"
 ```
 
