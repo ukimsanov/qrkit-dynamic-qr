@@ -245,7 +245,7 @@ curl -X POST https://YOUR_API_URL/generate \
 Edit `apps/api/wrangler.toml`:
 ```toml
 [vars]
-PUBLIC_BASE_URL = "https://qr-shortener-api.ularkimsanov7.workers.dev"
+PUBLIC_BASE_URL = "https://b.ularkimsanov.com"
 QR_SERVICE_URL = "https://YOUR_API_GATEWAY_URL/generate"
 ```
 
@@ -270,7 +270,7 @@ npx wrangler deploy
 Create a short URL and verify QR code generation:
 
 ```bash
-curl -X POST https://qr-shortener-api.ularkimsanov7.workers.dev/api/shorten \
+curl -X POST https://b.ularkimsanov.com/api/shorten \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://github.com",
@@ -281,7 +281,7 @@ curl -X POST https://qr-shortener-api.ularkimsanov7.workers.dev/api/shorten \
 **Expected response**:
 ```json
 {
-  "shortUrl": "https://qr-shortener-api.ularkimsanov7.workers.dev/abc123",
+  "shortUrl": "https://b.ularkimsanov.com/abc123",
   "shortCode": "abc123",
   "longUrl": "https://github.com",
   "expiresAt": "2025-11-26T12:00:00Z",
