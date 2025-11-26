@@ -33,20 +33,28 @@ High-performance **dynamic QR code** and URL shortening service with hand-writte
 
 **Key Features**:
 - 🔄 **Dynamic QR Codes** - Update destinations without reprinting QR codes
-- 📊 **Analytics Tracking** - Track scans by device, location, country, and time
+- 📊 **Real-time Analytics Dashboard** - Track scans by device, location, country, and time with live updates (30-second polling)
+- 🎨 **Modern UI/UX** - Two-column layout, dark mode, smooth animations, warm coral/peach theme
 - ⚡ **302 Redirects** - Temporary redirects allow dynamic updates (not cached permanently)
 - 🚀 **Edge Caching** - 10-50ms redirects with Redis cache hit (80%+ hit rate)
 - 🎯 **Hand-written Java QR generator** (99% manually written by team)
 - 📏 **Custom short domains** - Optimal QR code size (35 bytes, well under 53-byte limit)
 - 🌍 **Global edge deployment** - Cloudflare Workers (300+ locations)
+- 🌓 **Dark Mode** - User-controlled theme with localStorage persistence (no flash on load)
+- 🦺 **Safari Compatible** - Full support for Safari browser with proper -webkit- prefixes
 
 ## Tech Stack
 
 ### Frontend & API
-- **Next.js 16.0.4** - React 19, App Router, deployed on Cloudflare Workers
+- **Next.js 16.0.4** - React 19.2.0, App Router, deployed on Cloudflare Workers
+- **Tailwind CSS v4.1.17** - Utility-first CSS with OKLch color space
+- **Framer Motion 12.23.24** - Production-ready animations and transitions
+- **shadcn/ui** - Accessible component system (New York style)
+- **SWR 2.3.6** - Real-time data fetching with 30-second polling
+- **Recharts 3.5.0** - Beautiful analytics visualizations
 - **Hono** - Ultra-fast web framework optimized for edge
 - **Cloudflare Workers** - Global edge deployment (300+ locations)
-- **TypeScript 5.6** - End-to-end type safety
+- **TypeScript 5.9.3** - End-to-end type safety
 
 ### Storage & Caching
 - **Supabase (PostgreSQL)** - Persistent storage with REST API
@@ -69,9 +77,25 @@ apps/
 │   ├── migrations/   Database migrations
 │   └── wrangler.toml Cloudflare Worker config
 │
-├── web/              Next.js frontend (w.ularkimsanov.com)
+├── web/              Next.js frontend (qr-shortener-web.ularkimsanov7.workers.dev)
 │   ├── app/
-│   └── wrangler.toml Cloudflare Worker config
+│   │   ├── layout.tsx              Root layout with Navigation + theme script
+│   │   ├── page.tsx                Home page (two-column layout)
+│   │   ├── analytics/[code]/       Analytics dashboard (per QR code)
+│   │   └── globals.css             Theme system + transitions
+│   ├── components/
+│   │   ├── layout/
+│   │   │   └── navigation.tsx      Sticky nav with QR.io branding + dark mode toggle
+│   │   ├── ui/
+│   │   │   ├── theme-toggle.tsx    Sun/moon animated toggle button
+│   │   │   ├── button.tsx          shadcn/ui button component
+│   │   │   ├── card.tsx            shadcn/ui card components
+│   │   │   ├── badge.tsx           shadcn/ui badge component
+│   │   │   └── tabs.tsx            shadcn/ui tabs component
+│   │   └── qr-preview.tsx          QR code preview (empty/loading/success states)
+│   ├── hooks/
+│   │   └── use-theme.ts            Theme management hook (localStorage + system)
+│   └── wrangler.toml               Cloudflare Worker config
 │
 └── qr-generator/     Hand-written Java QR generator
     ├── src/main/java/com/qrgen/
@@ -80,6 +104,45 @@ apps/
     │   └── Main.java               CLI interface
     └── pom.xml                      Maven configuration
 ```
+
+## Frontend Features
+
+### Modern UI/UX Design
+- **Two-Column Layout** - Form on left, QR preview on right (responsive: stacks on mobile)
+- **Warm Color Theme** - Coral/peach primary colors with perceptually uniform OKLch color space
+- **Dark Mode** - User-controlled toggle with localStorage persistence, instant theme application (no flash)
+- **Smooth Animations** - Framer Motion for page transitions, hover effects, and state changes
+- **Safari Compatible** - Full support with -webkit- prefixes for backdrop-filter and transitions
+
+### Navigation
+- **Sticky Header** - QR.io branding with animated logo (360° rotation on hover)
+- **Frosted Glass Effect** - Semi-transparent navigation with backdrop blur
+- **Theme Toggle** - Animated sun/moon icons with smooth rotation (180°)
+- **Future-Ready** - Placeholder for authentication links (Login/Sign Up)
+
+### QR Preview Component
+Three distinct states with smooth transitions:
+- **Empty State** - Animated sparkle icon with floating grid pattern
+- **Loading State** - Dual rotating spinners with gradient borders
+- **Success State** - QR code display with copy button + analytics link
+
+### Analytics Dashboard
+- **Real-Time Data** - SWR with 30-second polling for live updates
+- **Interactive Charts** - Recharts visualizations (area, bar, pie charts)
+- **Theme-Aware** - All charts adapt to light/dark mode with proper color variables
+- **Comprehensive Metrics**:
+  - Total scans + scans today
+  - Device breakdown (mobile/desktop/tablet) with icons
+  - Geographic insights (top countries and cities)
+  - Time-series data (last 7 days scan activity)
+  - Recent scan activity (last 10 scans)
+- **Dynamic URL Updates** - Update QR code destination without reprinting
+
+### Design System
+- **shadcn/ui Components** - Accessible, customizable (New York style)
+- **Geist Fonts** - Modern sans and mono fonts
+- **Tailwind CSS v4** - Latest generation with custom theme integration
+- **Motion Design** - Subtle entrance animations, hover states, loading indicators
 
 ## Database Schema
 
@@ -521,8 +584,10 @@ mvn clean package
 - [ ] Configure CORS policies
 - [x] ✅ Set up analytics tracking (url_scans table)
 - [x] ✅ Analytics dashboard API (GET /api/analytics/:code)
+- [x] ✅ Frontend analytics dashboard UI (real-time charts with SWR)
+- [x] ✅ Modern UI/UX with dark mode and animations
+- [x] ✅ Safari browser compatibility with -webkit- prefixes
 - [ ] Add error reporting (Sentry, etc.)
-- [ ] Build frontend analytics dashboard UI
 
 ## MAANG Interview Talking Points
 
@@ -585,10 +650,14 @@ This project demonstrates production-grade system design that impresses recruite
 
 - **Dynamic QR Code System**: Industry-standard URL shortener pattern implementation
 - **QR Code Generator**: 99% hand-written by team using ZXing library
-- **Analytics Dashboard**: Real-time scan tracking with device, location, and time-series insights
+- **Analytics Dashboard Backend**: Real-time scan tracking with device, location, and time-series insights
+- **Analytics Dashboard Frontend**: Interactive charts with SWR polling, theme-aware visualizations using Recharts
+- **Modern UI/UX Design**: Two-column layout, dark mode system, Framer Motion animations, warm coral/peach theme
+- **Component Architecture**: Reusable shadcn/ui components with custom theme system
 - **Analytics Pipeline**: Async logging with indexed queries for sub-50ms dashboard loads
 - **Architecture Design**: Custom Lambda + Workers integration with edge caching
 - **Domain Configuration**: Optimized for QR code size constraints (35 bytes)
+- **Safari Compatibility**: Full browser support with proper -webkit- prefixes
 
 ## License
 
