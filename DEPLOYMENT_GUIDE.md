@@ -145,6 +145,7 @@ aws lambda create-function \
 5. Event JSON:
 ```json
 {
+  "httpMethod": "POST",
   "body": "{\"text\":\"https://example.com\"}"
 }
 ```
