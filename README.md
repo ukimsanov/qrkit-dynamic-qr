@@ -198,7 +198,7 @@ Our hand-written Java QR code generator supports:
 cd apps/qr-generator
 
 # Generate QR code
-java -jar target/qr-generator-lambda.jar "HELLO WORLD" qrcode.png
+java -cp target/qr-generator-lambda.jar com.qrgen.Main "HELLO WORLD" qrcode.png
 
 # Output:
 # QR Code generated successfully!
