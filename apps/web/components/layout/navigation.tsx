@@ -42,7 +42,7 @@ export function Navigation() {
 
             {/* Brand text - simple and clean */}
             <span className="text-xl font-bold">
-              QR.io
+              QRKit
             </span>
           </Link>
 
